@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChatBridge — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#0f1117;color:#e8eaed;min-height:100vh;padding:24px}
+a{color:#60a5fa;text-decoration:none}a:hover{text-decoration:underline}
+
+/* ── Header ── */
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;gap:16px}
+.header-left h1{font-size:28px;font-weight:800;margin-bottom:4px}
+.header-left p{color:#9ca3af;font-size:14px;max-width:620px;line-height:1.6}
+.completion-ring{position:relative;width:88px;height:88px;flex-shrink:0}
+.completion-ring svg{transform:rotate(-90deg)}
+.completion-ring .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800}
+
+/* ── Status row ── */
+.status-row{display:flex;gap:12px;margin-bottom:22px;flex-wrap:wrap;align-items:center}
+.status-pill{display:flex;align-items:center;gap:8px;background:#1a1d27;border:1px solid #2a2d3a;border-radius:8px;padding:8px 14px;font-size:13px}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.dot.green{background:#34d399;box-shadow:0 0 6px #34d39966}
+.dot.red{background:#f87171;box-shadow:0 0 6px #f8717166}
+.dot.gray{background:#4b5563}
+.dot.pulse{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.copy-btn{background:#2a2d3a;border:1px solid #3a3d4a;color:#e8eaed;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit;transition:all .2s}
+.copy-btn:hover{background:#3a3d4a}
+.copy-btn.ok{background:#34d39922;border-color:#34d399;color:#34d399}
+
+/* ── Pipeline ── */
+.pipeline{display:flex;align-items:center;background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:14px 20px;margin-bottom:20px;overflow-x:auto;gap:0}
+.stage{display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:7px;font-size:13px;font-weight:600;white-space:nowrap}
+.stage.done{background:#34d39918;color:#34d399}
+.stage.current{background:#fbbf2418;color:#fbbf24}
+.stage.future{color:#4b5563}
+.pipe-arr{color:#374151;margin:0 2px;font-size:14px}
+
+/* ── Stats ── */
+.stats{display:flex;gap:14px;margin-bottom:22px;flex-wrap:wrap}
+.stat{background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:14px 18px;flex:1;min-width:130px}
+.stat .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:3px}
+.stat .val{font-size:22px;font-weight:700}
+.val.blue{color:#60a5fa}.val.green{color:#34d399}.val.amber{color:#fbbf24}.val.purple{color:#a78bfa}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:2px;border-bottom:1px solid #2a2d3a;margin-bottom:18px}
+.tab{padding:10px 20px;cursor:pointer;font-size:14px;font-weight:600;color:#6b7280;border-bottom:2px solid transparent;transition:all .15s;position:relative;user-select:none}
+.tab:hover{color:#9ca3af}
+.tab.active{color:#e8eaed;border-bottom-color:#60a5fa}
+.tab .bdg{position:absolute;top:5px;right:4px;background:#f87171;color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:8px}
+.pane{display:none}.pane.active{display:block}
+
+/* ── Phase cards ── */
+.phase-card{background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:18px;margin-bottom:14px}
+.phase-hdr{display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none}
+.phase-hdr h3{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+.chevron{color:#6b7280;transition:transform .2s;font-size:12px}
+.chevron.open{transform:rotate(90deg)}
+.phase-meta{font-size:12px;color:#6b7280;display:flex;gap:12px}
+.prog{height:5px;background:#2a2d3a;border-radius:3px;margin:10px 0;overflow:hidden}
+.prog-fill{height:100%;border-radius:3px;transition:width .4s}
+.tasks{display:none;padding-top:4px}
+.tasks.open{display:block}
+.task-row{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid #1f2233;font-size:13px;line-height:1.5}
+.task-row:last-child{border:none}
+.chip{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;flex-shrink:0;margin-top:1px}
+.chip.done{background:#34d39918;color:#34d399}
+.chip.in-progress{background:#fbbf2418;color:#fbbf24}
+.chip.blocked{background:#f8717118;color:#f87171}
+.chip.ns{background:#37415118;color:#6b7280}
+.chip.new{background:#a78bfa18;color:#a78bfa}
+
+/* ── Requirements ── */
+.req-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.req-grid{grid-template-columns:1fr}}
+.req-card{background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:18px}
+.req-card h3{font-size:13px;font-weight:700;margin-bottom:8px}
+.req-prog{height:5px;background:#2a2d3a;border-radius:3px;margin-bottom:12px;overflow:hidden}
+.req-prog-fill{height:100%;border-radius:3px}
+.req-item{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;color:#9ca3af}
+.rdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.rdot.done{background:#34d399}.rdot.pending{background:#374151}
+
+/* ── Artifacts ── */
+.artifact-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.art-card{background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:16px}
+.art-card h4{font-size:13px;font-weight:700;margin-bottom:5px}
+.art-status{display:flex;align-items:center;gap:7px;font-size:12px;color:#6b7280}
+
+/* ── Activity ── */
+.feed{max-width:560px}
+.feed-item{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid #1f2233}
+.fdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.fdot.plan{background:#60a5fa}.fdot.update{background:#a78bfa}.fdot.implement{background:#34d399}
+.ftext{font-size:13px;color:#9ca3af;line-height:1.5}
+.ftext strong{color:#e8eaed}
+
+/* ── Update banner ── */
+.update-banner{background:#a78bfa18;border:1px solid #a78bfa44;border-radius:8px;padding:10px 14px;font-size:13px;color:#a78bfa;margin-bottom:18px;display:flex;align-items:center;gap:8px}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <h1>ChatBridge</h1>
+    <p>AI chat platform with third-party app integration for K-12 education. Two-phase schema injection, deterministic Policy Gate, tool-output firewall. 4 embedded apps.</p>
+  </div>
+  <div class="completion-ring">
+    <svg width="88" height="88" viewBox="0 0 88 88">
+      <circle cx="44" cy="44" r="37" fill="none" stroke="#2a2d3a" stroke-width="6"/>
+      <circle cx="44" cy="44" r="37" fill="none" stroke="#60a5fa" stroke-width="6"
+        stroke-dasharray="232.48" stroke-dashoffset="232.48"
+        stroke-linecap="round" id="ring"/>
+    </svg>
+    <div class="pct" id="pctTxt">0%</div>
+  </div>
+</div>
+
+<!-- Status row -->
+<div class="status-row">
+  <div class="status-pill">
+    <div class="dot gray pulse" id="localDot"></div>
+    <span id="localLabel">Local: http://localhost:3000</span>
+  </div>
+  <div class="status-pill">
+    <div class="dot gray" id="prodDot"></div>
+    <span id="prodLabel">Production: Not deployed</span>
+  </div>
+  <button class="copy-btn" id="copyBtn" onclick="copyCmd()">Copy start command</button>
+</div>
+
+<!-- Pipeline -->
+<div class="pipeline">
+  <div class="stage done">✓ Presearch</div>
+  <span class="pipe-arr">›</span>
+  <div class="stage current">● Implement</div>
+  <span class="pipe-arr">›</span>
+  <div class="stage future">○ Review</div>
+  <span class="pipe-arr">›</span>
+  <div class="stage future">○ Test / QA</div>
+  <span class="pipe-arr">›</span>
+  <div class="stage future">○ Ship</div>
+</div>
+
+<!-- Stats -->
+<div class="stats">
+  <div class="stat"><div class="lbl">Completion</div><div class="val blue" id="sPct">0%</div></div>
+  <div class="stat"><div class="lbl">Tasks Done</div><div class="val green" id="sDone">0 / 33</div></div>
+  <div class="stat"><div class="lbl">Remaining</div><div class="val amber" id="sRem">33</div></div>
+  <div class="stat"><div class="lbl">Deadline</div><div class="val" style="font-size:14px">Sun Apr 5</div></div>
+  <div class="stat"><div class="lbl">Days Left</div><div class="val amber" id="sDays">—</div></div>
+</div>
+
+<!-- Update banner -->
+<div class="update-banner">
+  ✦ Plan updated — adopted two-phase schema injection, Policy Gate, and tool-output firewall from architecture review
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('phases',this)">Phases</div>
+  <div class="tab" onclick="switchTab('reqs',this)">Requirements</div>
+  <div class="tab" onclick="switchTab('artifacts',this)">Artifacts</div>
+  <div class="tab" onclick="switchTab('activity',this)">Activity <span class="bdg">3</span></div>
+</div>
+
+<!-- ═══════════════ TAB: PHASES ═══════════════ -->
+<div class="pane active" id="pane-phases">
+
+  <!-- Phase 1 -->
+  <div class="phase-card">
+    <div class="phase-hdr" onclick="togglePhase(this)">
+      <h3><span class="chevron">▶</span> Phase 1: Foundation + Pre-search</h3>
+      <div class="phase-meta"><span>Day 1 — Tue Mar 31</span><span>0 / 9</span></div>
+    </div>
+    <div class="prog"><div class="prog-fill" style="width:0%;background:#fbbf24"></div></div>
+    <div class="tasks">
+      <div class="task-row"><span class="chip ns">Not Started</span>Fork chatboxai/chatbox to GitLab</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Verify pnpm run build:web produces deployable SPA</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Express backend scaffolded with TypeScript, running locally</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Supabase project created with database tables</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Basic chat: user types → OpenAI → SSE streams response</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Conversation persistence (save/load from Supabase)</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>User auth (register/login via Supabase Auth)</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Pre-search document with 500-word Case Study Analysis</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>3–5 minute architecture presentation video</div>
+    </div>
+  </div>
+
+  <!-- Phase 2 -->
+  <div class="phase-card">
+    <div class="phase-hdr" onclick="togglePhase(this)">
+      <h3><span class="chevron">▶</span> Phase 2: Plugin System + Chess</h3>
+      <div class="phase-meta"><span>Days 2–3</span><span>0 / 10</span></div>
+    </div>
+    <div class="prog"><div class="prog-fill" style="width:0%;background:#60a5fa"></div></div>
+    <div class="tasks">
+      <div class="task-row"><span class="chip ns">Not Started</span>Shared types: AppRegistration, ToolSchema, PluginMessage, ToolInvocation, ToolCallRequest, PolicyDecision</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Plugin Registry API (/api/apps CRUD) with seeded chess registration (input + output schemas)</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Plugin Manager component (iframe lifecycle, postMessage bridge)</div>
+      <div class="task-row"><span class="chip new">New</span><span><b>Intent Classifier</b> — Phase 1 of two-phase routing (identifies target app)</span></div>
+      <div class="task-row"><span class="chip new">New</span><span><b>Two-phase schema injection</b> — inject only matched app's tools per turn</span></div>
+      <div class="task-row"><span class="chip new">New</span><span><b>Policy Gate</b> — deterministic approval layer before every tool invocation</span></div>
+      <div class="task-row"><span class="chip new">New</span><span><b>Tool-output firewall</b> — output schema validation, sanitized projection, trust-boundary delimiters</span></div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Chess app fully integrated (board, tools with outputSchema, lifecycle)</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Completion signaling (chess game end → chatbot resumes)</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Context retention (chatbot remembers game results)</div>
+    </div>
+  </div>
+
+  <!-- Phase 3 -->
+  <div class="phase-card">
+    <div class="phase-hdr" onclick="togglePhase(this)">
+      <h3><span class="chevron">▶</span> Phase 3: Additional Apps</h3>
+      <div class="phase-meta"><span>Days 3–4 — Fri Apr 3</span><span>0 / 6</span></div>
+    </div>
+    <div class="prog"><div class="prog-fill" style="width:0%;background:#34d399"></div></div>
+    <div class="tasks">
+      <div class="task-row"><span class="chip ns">Not Started</span>Flashcard Quiz app (internal, no auth, educational)</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Drawing Canvas app (internal, rich UI, HTML5 Canvas)</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Spotify Playlist Creator (OAuth2, external API)</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Multi-app routing working (chatbot picks correct app)</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>App switching within a single conversation</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Error handling for app failures (timeout, crash, invalid response)</div>
+    </div>
+  </div>
+
+  <!-- Phase 4 -->
+  <div class="phase-card">
+    <div class="phase-hdr" onclick="togglePhase(this)">
+      <h3><span class="chevron">▶</span> Phase 4: Polish + Deploy + Docs</h3>
+      <div class="phase-meta"><span>Days 5–7 — Sun Apr 5</span><span>0 / 8</span></div>
+    </div>
+    <div class="prog"><div class="prog-fill" style="width:0%;background:#a78bfa"></div></div>
+    <div class="tasks">
+      <div class="task-row"><span class="chip ns">Not Started</span>Error handling hardened across all apps and chat</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>All loading states and UX indicators polished</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Frontend deployed to Vercel</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Backend deployed to Railway</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>API documentation for third-party developers</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>AI Cost Analysis document</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Demo video (3–5 min)</div>
+      <div class="task-row"><span class="chip ns">Not Started</span>Social post on X or LinkedIn tagging @GauntletAI</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ TAB: REQUIREMENTS ═══════════════ -->
+<div class="pane" id="pane-reqs">
+  <div class="req-grid">
+
+    <div class="req-card">
+      <h3 style="color:#f87171">Must-have — Functional (17)</h3>
+      <div class="req-prog"><div class="req-prog-fill" style="width:0%;background:#f87171"></div></div>
+      <div class="req-item"><div class="rdot pending"></div>FR-01: Real-time AI chat with streaming</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-02: Persistent conversation history</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-03: Chat context awareness of apps</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-04: Multi-turn conversations spanning apps</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-05: Graceful error recovery</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-06: User authentication</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-07: App registration API</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-08: Tool schema definition (input + output)</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-09: App UI rendering (sandboxed iframes)</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-10: Bidirectional communication</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-11: Completion signaling</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-12: Independent app state management</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-13: Chess app</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-14: Flashcard Quiz app</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-15: Drawing Canvas app</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-16: Spotify Playlist Creator</div>
+      <div class="req-item"><div class="rdot pending"></div>FR-17: OAuth2 flow</div>
+    </div>
+
+    <div class="req-card">
+      <h3 style="color:#fbbf24">Must-have — Non-Functional (6)</h3>
+      <div class="req-prog"><div class="req-prog-fill" style="width:0%;background:#fbbf24"></div></div>
+      <div class="req-item"><div class="rdot pending"></div>NFR-01: Response times with UX cues</div>
+      <div class="req-item"><div class="rdot pending"></div>NFR-02: Iframe sandboxing + CSP + data isolation</div>
+      <div class="req-item"><div class="rdot pending"></div>NFR-03: Loading indicators on all async ops</div>
+      <div class="req-item"><div class="rdot pending"></div>NFR-04: API documentation for devs</div>
+      <div class="req-item"><div class="rdot pending"></div>NFR-05: Publicly accessible deployment</div>
+      <div class="req-item"><div class="rdot pending"></div>NFR-06: AI cost analysis at 4 scales</div>
+    </div>
+
+    <div class="req-card">
+      <h3 style="color:#a78bfa">Architecture Upgrades (adopted from review)</h3>
+      <div class="req-prog"><div class="req-prog-fill" style="width:0%;background:#a78bfa"></div></div>
+      <div class="req-item"><div class="rdot pending"></div>Two-phase schema injection (intent classify → targeted inject)</div>
+      <div class="req-item"><div class="rdot pending"></div>Intent Classifier component</div>
+      <div class="req-item"><div class="rdot pending"></div>Policy Gate (deterministic pre-invocation checks)</div>
+      <div class="req-item"><div class="rdot pending"></div>Tool-output firewall (outputSchema validation + delimiters)</div>
+      <div class="req-item"><div class="rdot pending"></div>outputSchema declared per tool in app registrations</div>
+    </div>
+
+    <div class="req-card">
+      <h3 style="color:#60a5fa">Submission Artifacts (5)</h3>
+      <div class="req-prog"><div class="req-prog-fill" style="width:0%;background:#60a5fa"></div></div>
+      <div class="req-item"><div class="rdot pending"></div>GitLab repo with setup guide + docs</div>
+      <div class="req-item"><div class="rdot pending"></div>Demo video (3–5 min)</div>
+      <div class="req-item"><div class="rdot pending"></div>AI Cost Analysis</div>
+      <div class="req-item"><div class="rdot pending"></div>Deployed application</div>
+      <div class="req-item"><div class="rdot pending"></div>Social post tagging @GauntletAI</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════ TAB: ARTIFACTS ═══════════════ -->
+<div class="pane" id="pane-artifacts">
+  <div class="artifact-grid">
+    <div class="art-card">
+      <h4>PROJECT_PLAN.md</h4>
+      <div class="art-status"><div class="dot green"></div>Updated Mar 30, 2026</div>
+    </div>
+    <div class="art-card">
+      <h4>ChatBridge_Presearch.pdf</h4>
+      <div class="art-status"><div class="dot green"></div>Created Mar 30, 2026</div>
+    </div>
+    <div class="art-card">
+      <h4>IMPLEMENTATION_LOG.md</h4>
+      <div class="art-status"><div class="dot gray"></div>Not created</div>
+    </div>
+    <div class="art-card">
+      <h4>BUILD_MANIFEST.md</h4>
+      <div class="art-status"><div class="dot gray"></div>Not created</div>
+    </div>
+    <div class="art-card">
+      <h4>REVIEW_REPORT.md</h4>
+      <div class="art-status"><div class="dot gray"></div>Not created</div>
+    </div>
+    <div class="art-card">
+      <h4>TEST_REPORT.md</h4>
+      <div class="art-status"><div class="dot gray"></div>Not created</div>
+    </div>
+    <div class="art-card">
+      <h4>RELEASE.md</h4>
+      <div class="art-status"><div class="dot gray"></div>Not created</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ TAB: ACTIVITY ═══════════════ -->
+<div class="pane" id="pane-activity">
+  <div class="feed">
+    <div class="feed-item">
+      <div class="fdot update"></div>
+      <div class="ftext"><strong>Plan updated — architecture review adoptions</strong><br>
+      Three improvements merged from peer review: two-phase schema injection (Xian), deterministic Policy Gate (Henry), tool-output firewall (Henry). Phase 2 expanded from 7 → 10 deliverables. Total tasks: 30 → 33.<br>
+      <span style="color:#4b5563">Mar 30, 2026</span></div>
+    </div>
+    <div class="feed-item">
+      <div class="fdot update"></div>
+      <div class="ftext"><strong>Pre-search PDF created</strong><br>
+      ChatBridge_Presearch.pdf — 9 pages, all 16 planning checklist items addressed, alternatives considered documented.<br>
+      <span style="color:#4b5563">Mar 30, 2026</span></div>
+    </div>
+    <div class="feed-item">
+      <div class="fdot plan"></div>
+      <div class="ftext"><strong>Presearch completed — PROJECT_PLAN.md generated</strong><br>
+      Full architecture, 4-phase plan, cost analysis. Stack: Chatbox fork + Express + Supabase + OpenAI GPT-4o-mini.<br>
+      <span style="color:#4b5563">Mar 30, 2026</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const LOCAL  = 'http://localhost:3000';
+const PROD   = 'none';
+const CMD    = 'cd frontend && pnpm install && pnpm run delete-sourcemaps && pnpm run build:web && pnpm run serve:web';
+const TOTAL  = 33;
+const DONE   = 0;
+const END    = new Date('2026-04-05T23:59:00');
+
+// ── Ring + stats ─────────────────────────────────────────────────────────────
+const pct = Math.round(DONE / TOTAL * 100);
+const circ = 2 * Math.PI * 37;
+document.getElementById('ring').style.strokeDashoffset = circ - circ * pct / 100;
+document.getElementById('pctTxt').textContent = pct + '%';
+document.getElementById('sPct').textContent   = pct + '%';
+document.getElementById('sDone').textContent  = DONE + ' / ' + TOTAL;
+document.getElementById('sRem').textContent   = TOTAL - DONE;
+
+const daysLeft = Math.max(0, Math.ceil((END - Date.now()) / 864e5));
+document.getElementById('sDays').textContent = daysLeft;
+
+// ── Live status pings ────────────────────────────────────────────────────────
+async function ping(url, dotId, labelId) {
+  if (url === 'none') {
+    document.getElementById(dotId).className = 'dot gray';
+    document.getElementById(labelId).textContent = 'Production: Not deployed';
+    return;
+  }
+  try {
+    await fetch(url, { mode: 'no-cors', cache: 'no-cache' });
+    document.getElementById(dotId).className = 'dot green pulse';
+    const isLocal = labelId === 'localLabel';
+    document.getElementById(labelId).innerHTML =
+      (isLocal ? 'Local: ' : 'Production: ') +
+      '<a href="' + url + '" target="_blank">' + url + '</a>';
+  } catch {
+    document.getElementById(dotId).className = 'dot red';
+    document.getElementById(labelId).textContent =
+      (labelId === 'localLabel' ? 'Local: ' : 'Production: ') + url;
+  }
+}
+function checkAll(){ ping(LOCAL,'localDot','localLabel'); ping(PROD,'prodDot','prodLabel'); }
+checkAll(); setInterval(checkAll, 5000);
+
+// ── Copy command ─────────────────────────────────────────────────────────────
+function copyCmd() {
+  navigator.clipboard.writeText(CMD).then(() => {
+    const b = document.getElementById('copyBtn');
+    b.textContent = '✓ Copied!'; b.classList.add('ok');
+    setTimeout(() => { b.textContent = 'Copy start command'; b.classList.remove('ok'); }, 2000);
+  });
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(id, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('pane-' + id).classList.add('active');
+}
+
+// ── Phase toggle ──────────────────────────────────────────────────────────────
+function togglePhase(hdr) {
+  const tasks   = hdr.parentElement.querySelector('.tasks');
+  const chevron = hdr.querySelector('.chevron');
+  tasks.classList.toggle('open');
+  chevron.classList.toggle('open');
+}
+</script>
+</body>
+</html>
