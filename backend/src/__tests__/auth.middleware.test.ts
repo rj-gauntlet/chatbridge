@@ -21,7 +21,7 @@ vi.mock('@supabase/supabase-js', () => ({
   })),
 }))
 
-const { requireAuth } = await import('../middleware/auth')
+import { requireAuth } from '../middleware/auth'
 
 function makeApp() {
   const app = express()
