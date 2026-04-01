@@ -152,7 +152,9 @@ a{color:#60a5fa;text-decoration:none}a:hover{text-decoration:underline}
 <div class="phase-banner">
   <span>&#10003; Phase 1 Complete</span>
   <span class="sep">|</span>
-  <span class="p2-label">&#9654; Phase 2 In Progress</span>
+  <span>&#10003; Phase 2 Complete</span>
+  <span class="sep">|</span>
+  <span class="p2-label">&#9654; Phase 3 In Progress</span>
 </div>
 
 <!-- Pipeline -->
@@ -173,6 +175,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{text-decoration:underline}
   <div class="stat"><div class="lbl">Completion</div><div class="val blue" id="sPct">0%</div></div>
   <div class="stat"><div class="lbl">Tasks Done</div><div class="val green" id="sDone">0 / 33</div></div>
   <div class="stat"><div class="lbl">Remaining</div><div class="val amber" id="sRem">33</div></div>
+  <div class="stat"><div class="lbl">Status</div><div class="val" style="font-size:12px;line-height:1.4;color:#34d399">Phase 2 Complete<br><span style="color:#fbbf24">Phase 3 In Progress</span></div></div>
   <div class="stat"><div class="lbl">Deadline</div><div class="val" style="font-size:14px">Sun Apr 5</div></div>
   <div class="stat"><div class="lbl">Days Left</div><div class="val amber" id="sDays">—</div></div>
 </div>
@@ -187,7 +190,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{text-decoration:underline}
   <div class="tab active" onclick="switchTab('phases',this)">Phases</div>
   <div class="tab" onclick="switchTab('reqs',this)">Requirements</div>
   <div class="tab" onclick="switchTab('artifacts',this)">Artifacts</div>
-  <div class="tab" onclick="switchTab('activity',this)">Activity <span class="bdg">6</span></div>
+  <div class="tab" onclick="switchTab('activity',this)">Activity <span class="bdg">9</span></div>
 </div>
 
 <!-- ═══════════════ TAB: PHASES ═══════════════ -->
@@ -221,38 +224,38 @@ a{color:#60a5fa;text-decoration:none}a:hover{text-decoration:underline}
     </div>
   </div>
 
-  <!-- Phase 2 — IN PROGRESS -->
-  <div class="phase-card phase-active">
+  <!-- Phase 2 — COMPLETE -->
+  <div class="phase-card phase-complete">
     <div class="phase-hdr" onclick="togglePhase(this)">
       <h3><span class="chevron">▶</span> Phase 2: Plugin System + Chess</h3>
       <div class="phase-meta">
         <span>Days 2–3</span>
-        <span>0 / 10</span>
-        <span class="badge-active">&#9679; In Progress</span>
+        <span>10 / 10</span>
+        <span class="badge-complete">&#10003; Complete</span>
       </div>
     </div>
-    <div class="prog"><div class="prog-fill" style="width:0%;background:#fbbf24"></div></div>
+    <div class="prog"><div class="prog-fill" style="width:100%;background:#34d399"></div></div>
     <div class="tasks">
-      <div class="task-row"><span class="chip ns">Not Started</span>Shared types: AppRegistration, ToolSchema, PluginMessage, ToolInvocation, ToolCallRequest, PolicyDecision</div>
-      <div class="task-row"><span class="chip ns">Not Started</span>Plugin Registry API (/api/apps CRUD) with seeded chess registration (input + output schemas)</div>
-      <div class="task-row"><span class="chip ns">Not Started</span>Plugin Manager component (iframe lifecycle, postMessage bridge)</div>
-      <div class="task-row"><span class="chip new">New</span><span><b>Intent Classifier</b> — Phase 1 of two-phase routing (identifies target app)</span></div>
-      <div class="task-row"><span class="chip new">New</span><span><b>Two-phase schema injection</b> — inject only matched app's tools per turn</span></div>
-      <div class="task-row"><span class="chip new">New</span><span><b>Policy Gate</b> — deterministic approval layer before every tool invocation</span></div>
-      <div class="task-row"><span class="chip new">New</span><span><b>Tool-output firewall</b> — output schema validation, sanitized projection, trust-boundary delimiters</span></div>
-      <div class="task-row"><span class="chip ns">Not Started</span>Chess app fully integrated (board, tools with outputSchema, lifecycle)</div>
-      <div class="task-row"><span class="chip ns">Not Started</span>Completion signaling (chess game end → chatbot resumes)</div>
-      <div class="task-row"><span class="chip ns">Not Started</span>Context retention (chatbot remembers game results)</div>
+      <div class="task-row"><span class="chip done">Done</span>Shared types: AppRegistration, ToolSchema, PluginMessage, ToolInvocation, ToolCallRequest, PolicyDecision</div>
+      <div class="task-row"><span class="chip done">Done</span>Plugin Registry API (/api/apps CRUD) with seeded chess registration (input + output schemas)</div>
+      <div class="task-row"><span class="chip done">Done</span>Plugin Manager component (iframe lifecycle, postMessage bridge)</div>
+      <div class="task-row"><span class="chip done">Done</span><span><b>Intent Classifier</b> — Phase 1 of two-phase routing (identifies target app)</span></div>
+      <div class="task-row"><span class="chip done">Done</span><span><b>Two-phase schema injection</b> — inject only matched app's tools per turn</span></div>
+      <div class="task-row"><span class="chip done">Done</span><span><b>Policy Gate</b> — deterministic approval layer before every tool invocation</span></div>
+      <div class="task-row"><span class="chip done">Done</span><span><b>Tool Orchestrator with tool-output firewall</b> — output schema validation, sanitized projection, trust-boundary delimiters</span></div>
+      <div class="task-row"><span class="chip done">Done</span>Chess app fully integrated (board, tools with outputSchema, lifecycle)</div>
+      <div class="task-row"><span class="chip done">Done</span>Completion signaling (chess game end → chatbot resumes)</div>
+      <div class="task-row"><span class="chip done">Done</span>Context retention (chatbot remembers game results)</div>
     </div>
   </div>
 
-  <!-- Phase 3 -->
-  <div class="phase-card">
+  <!-- Phase 3 — IN PROGRESS -->
+  <div class="phase-card phase-active">
     <div class="phase-hdr" onclick="togglePhase(this)">
       <h3><span class="chevron">▶</span> Phase 3: Additional Apps</h3>
-      <div class="phase-meta"><span>Days 3–4 — Fri Apr 3</span><span>0 / 6</span></div>
+      <div class="phase-meta"><span>Days 3–4 — Fri Apr 3</span><span>0 / 6</span><span class="badge-active">&#9679; In Progress</span></div>
     </div>
-    <div class="prog"><div class="prog-fill" style="width:0%;background:#34d399"></div></div>
+    <div class="prog"><div class="prog-fill" style="width:0%;background:#fbbf24"></div></div>
     <div class="tasks">
       <div class="task-row"><span class="chip ns">Not Started</span>Flashcard Quiz app (internal, no auth, educational)</div>
       <div class="task-row"><span class="chip ns">Not Started</span>Drawing Canvas app (internal, rich UI, HTML5 Canvas)</div>
@@ -289,20 +292,20 @@ a{color:#60a5fa;text-decoration:none}a:hover{text-decoration:underline}
 
     <div class="req-card">
       <h3 style="color:#f87171">Must-have — Functional (17)</h3>
-      <div class="req-prog"><div class="req-prog-fill" style="width:24%;background:#f87171"></div></div>
+      <div class="req-prog"><div class="req-prog-fill" style="width:76%;background:#f87171"></div></div>
       <div class="req-item"><div class="rdot done"></div>FR-01: Real-time AI chat with streaming</div>
       <div class="req-item"><div class="rdot done"></div>FR-02: Persistent conversation history</div>
-      <div class="req-item"><div class="rdot pending"></div>FR-03: Chat context awareness of apps</div>
-      <div class="req-item"><div class="rdot pending"></div>FR-04: Multi-turn conversations spanning apps</div>
+      <div class="req-item"><div class="rdot done"></div>FR-03: Chat context awareness of apps</div>
+      <div class="req-item"><div class="rdot done"></div>FR-04: Multi-turn conversations spanning apps</div>
       <div class="req-item"><div class="rdot pending"></div>FR-05: Graceful error recovery</div>
       <div class="req-item"><div class="rdot done"></div>FR-06: User authentication</div>
-      <div class="req-item"><div class="rdot pending"></div>FR-07: App registration API</div>
-      <div class="req-item"><div class="rdot pending"></div>FR-08: Tool schema definition (input + output)</div>
-      <div class="req-item"><div class="rdot pending"></div>FR-09: App UI rendering (sandboxed iframes)</div>
-      <div class="req-item"><div class="rdot pending"></div>FR-10: Bidirectional communication</div>
-      <div class="req-item"><div class="rdot pending"></div>FR-11: Completion signaling</div>
-      <div class="req-item"><div class="rdot pending"></div>FR-12: Independent app state management</div>
-      <div class="req-item"><div class="rdot pending"></div>FR-13: Chess app</div>
+      <div class="req-item"><div class="rdot done"></div>FR-07: App registration API</div>
+      <div class="req-item"><div class="rdot done"></div>FR-08: Tool schema definition (input + output)</div>
+      <div class="req-item"><div class="rdot done"></div>FR-09: App UI rendering (sandboxed iframes)</div>
+      <div class="req-item"><div class="rdot done"></div>FR-10: Bidirectional communication</div>
+      <div class="req-item"><div class="rdot done"></div>FR-11: Completion signaling</div>
+      <div class="req-item"><div class="rdot done"></div>FR-12: Independent app state management</div>
+      <div class="req-item"><div class="rdot done"></div>FR-13: Chess app</div>
       <div class="req-item"><div class="rdot pending"></div>FR-14: Flashcard Quiz app</div>
       <div class="req-item"><div class="rdot pending"></div>FR-15: Drawing Canvas app</div>
       <div class="req-item"><div class="rdot pending"></div>FR-16: Spotify Playlist Creator</div>
@@ -322,12 +325,12 @@ a{color:#60a5fa;text-decoration:none}a:hover{text-decoration:underline}
 
     <div class="req-card">
       <h3 style="color:#a78bfa">Architecture Upgrades (adopted from review)</h3>
-      <div class="req-prog"><div class="req-prog-fill" style="width:0%;background:#a78bfa"></div></div>
-      <div class="req-item"><div class="rdot pending"></div>Two-phase schema injection (intent classify → targeted inject)</div>
-      <div class="req-item"><div class="rdot pending"></div>Intent Classifier component</div>
-      <div class="req-item"><div class="rdot pending"></div>Policy Gate (deterministic pre-invocation checks)</div>
-      <div class="req-item"><div class="rdot pending"></div>Tool-output firewall (outputSchema validation + delimiters)</div>
-      <div class="req-item"><div class="rdot pending"></div>outputSchema declared per tool in app registrations</div>
+      <div class="req-prog"><div class="req-prog-fill" style="width:100%;background:#a78bfa"></div></div>
+      <div class="req-item"><div class="rdot done"></div>Two-phase schema injection (intent classify → targeted inject)</div>
+      <div class="req-item"><div class="rdot done"></div>Intent Classifier component</div>
+      <div class="req-item"><div class="rdot done"></div>Policy Gate (deterministic pre-invocation checks)</div>
+      <div class="req-item"><div class="rdot done"></div>Tool-output firewall (outputSchema validation + delimiters)</div>
+      <div class="req-item"><div class="rdot done"></div>outputSchema declared per tool in app registrations</div>
     </div>
 
     <div class="req-card">
@@ -386,6 +389,24 @@ a{color:#60a5fa;text-decoration:none}a:hover{text-decoration:underline}
   <div class="feed">
     <div class="feed-item">
       <div class="fdot implement"></div>
+      <div class="ftext"><strong>Phase 2 Complete — plugin system, Intent Classifier, Policy Gate, Chess app</strong><br>
+      All 10 Phase 2 deliverables shipped. Shared types, Plugin Registry API, Plugin Manager, Intent Classifier, two-phase schema injection, Policy Gate, Tool Orchestrator with tool-output firewall, Chess app integration, completion signaling, and context retention all working. Phase 3 now active.<br>
+      <span style="color:#4b5563">Apr 1, 2026</span></div>
+    </div>
+    <div class="feed-item">
+      <div class="fdot implement"></div>
+      <div class="ftext"><strong>13/13 backend tests passing</strong><br>
+      Full backend test suite green. All Phase 1 and Phase 2 routes, components, and integration points verified.<br>
+      <span style="color:#4b5563">Apr 1, 2026</span></div>
+    </div>
+    <div class="feed-item">
+      <div class="fdot implement"></div>
+      <div class="ftext"><strong>Chess app builds in 583ms with react-chessboard + chess.js</strong><br>
+      Chess app Vite build confirmed at 583ms. react-chessboard and chess.js dependencies installed and working. Full board interaction, move validation, and postMessage lifecycle operational.<br>
+      <span style="color:#4b5563">Apr 1, 2026</span></div>
+    </div>
+    <div class="feed-item">
+      <div class="fdot implement"></div>
       <div class="ftext"><strong>Phase 1 Complete — backend, Chatbox web build, auth, chat SSE, shared types</strong><br>
       All 9 Phase 1 deliverables shipped. Express + TypeScript backend running locally, Chatbox SPA builds clean, Supabase Auth integrated, SSE chat streaming end-to-end, conversation persistence working. Phase 2 now active.<br>
       <span style="color:#4b5563">Apr 1, 2026</span></div>
@@ -429,7 +450,7 @@ const LOCAL  = 'http://localhost:3000';
 const PROD   = 'none';
 const CMD    = 'cd frontend && pnpm install && pnpm run delete-sourcemaps && pnpm run build:web && pnpm run serve:web';
 const TOTAL  = 33;
-const DONE   = 9;
+const DONE   = 19;
 const END    = new Date('2026-04-05T23:59:00');
 
 // ── Ring + stats ─────────────────────────────────────────────────────────────

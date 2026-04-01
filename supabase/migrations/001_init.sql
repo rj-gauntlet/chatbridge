@@ -1,8 +1,7 @@
 -- ============================================================
--- ChatBridge — Initial Schema Migration
+-- ChatBridge — Initial Schema Migration  (idempotent)
 -- ============================================================
 
--- Enable UUID generation
 create extension if not exists "pgcrypto";
 
 -- ============================================================
@@ -16,10 +15,9 @@ create table if not exists conversations (
   updated_at  timestamptz not null default now()
 );
 
-create index if not exists conversations_user_id_idx on conversations(user_id);
+create index if not exists conversations_user_id_idx  on conversations(user_id);
 create index if not exists conversations_updated_at_idx on conversations(updated_at desc);
 
--- Auto-update updated_at
 create or replace function update_updated_at()
 returns trigger as $$
 begin
@@ -28,6 +26,7 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists conversations_updated_at on conversations;
 create trigger conversations_updated_at
   before update on conversations
   for each row execute function update_updated_at();
@@ -47,7 +46,7 @@ create table if not exists messages (
 );
 
 create index if not exists messages_conversation_id_idx on messages(conversation_id);
-create index if not exists messages_created_at_idx on messages(created_at asc);
+create index if not exists messages_created_at_idx      on messages(created_at asc);
 
 -- ============================================================
 -- APP REGISTRATIONS
@@ -68,6 +67,7 @@ create table if not exists app_registrations (
   updated_at    timestamptz not null default now()
 );
 
+drop trigger if exists app_registrations_updated_at on app_registrations;
 create trigger app_registrations_updated_at
   before update on app_registrations
   for each row execute function update_updated_at();
@@ -106,6 +106,7 @@ create table if not exists oauth_tokens (
   unique(user_id, app_id)
 );
 
+drop trigger if exists oauth_tokens_updated_at on oauth_tokens;
 create trigger oauth_tokens_updated_at
   before update on oauth_tokens
   for each row execute function update_updated_at();
@@ -114,13 +115,22 @@ create trigger oauth_tokens_updated_at
 -- ROW LEVEL SECURITY
 -- ============================================================
 
--- Conversations: users can only see their own
-alter table conversations enable row level security;
+alter table conversations    enable row level security;
+alter table messages         enable row level security;
+alter table app_registrations enable row level security;
+alter table tool_invocations  enable row level security;
+alter table oauth_tokens      enable row level security;
+
+-- Drop and recreate policies so re-runs don't fail
+drop policy if exists "conversations_own"         on conversations;
+drop policy if exists "messages_own"              on messages;
+drop policy if exists "app_registrations_read"    on app_registrations;
+drop policy if exists "tool_invocations_own"      on tool_invocations;
+drop policy if exists "oauth_tokens_own"          on oauth_tokens;
+
 create policy "conversations_own" on conversations
   using (auth.uid() = user_id);
 
--- Messages: users can see messages in their conversations
-alter table messages enable row level security;
 create policy "messages_own" on messages
   using (
     exists (
@@ -130,13 +140,9 @@ create policy "messages_own" on messages
     )
   );
 
--- App registrations: all authenticated users can read
-alter table app_registrations enable row level security;
 create policy "app_registrations_read" on app_registrations
   for select using (auth.role() = 'authenticated');
 
--- Tool invocations: users can see their own
-alter table tool_invocations enable row level security;
 create policy "tool_invocations_own" on tool_invocations
   using (
     exists (
@@ -146,7 +152,5 @@ create policy "tool_invocations_own" on tool_invocations
     )
   );
 
--- OAuth tokens: users see only their own
-alter table oauth_tokens enable row level security;
 create policy "oauth_tokens_own" on oauth_tokens
   using (auth.uid() = user_id);

@@ -112,37 +112,61 @@ const apps = [
     tools: [
       {
         name: 'start_quiz',
-        description: 'Start a flashcard quiz on a topic with a set of question/answer pairs.',
+        description: 'Start a flashcard quiz on a topic. Available topics: math, science, history, vocabulary.',
         inputSchema: {
           type: 'object',
           properties: {
-            topic: { type: 'string', description: 'Quiz topic' },
-            cards: {
-              type: 'array',
-              description: 'Array of {question, answer} objects',
-              items: {
-                type: 'object',
-                properties: {
-                  question: { type: 'string' },
-                  answer: { type: 'string' },
-                },
-              },
-            },
+            topic: { type: 'string', description: 'Quiz topic: math, science, history, or vocabulary' },
+            cardCount: { type: 'number', description: 'Number of cards (1-10, default 5)' },
           },
-          required: ['topic', 'cards'],
+          required: ['topic'],
         },
         outputSchema: {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
+            topic: { type: 'string' },
             totalCards: { type: 'number' },
+            firstQuestion: { type: 'string' },
+          },
+        },
+      },
+      {
+        name: 'get_question',
+        description: 'Get the current question in the active quiz.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            questionNumber: { type: 'number' },
+            totalQuestions: { type: 'number' },
+            question: { type: 'string' },
             topic: { type: 'string' },
           },
         },
       },
       {
+        name: 'submit_answer',
+        description: 'Submit an answer for the current quiz question.',
+        inputSchema: {
+          type: 'object',
+          properties: { answer: { type: 'string', description: 'The user\'s answer' } },
+          required: ['answer'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            correct: { type: 'boolean' },
+            correctAnswer: { type: 'string' },
+            userAnswer: { type: 'string' },
+            score: { type: 'number' },
+            questionsRemaining: { type: 'number' },
+          },
+        },
+      },
+      {
         name: 'get_results',
-        description: 'Get the quiz results after the user has completed the quiz.',
+        description: 'Get the quiz results. Call after all questions are answered.',
         inputSchema: { type: 'object', properties: {}, required: [] },
         outputSchema: {
           type: 'object',
@@ -150,7 +174,8 @@ const apps = [
             score: { type: 'number' },
             total: { type: 'number' },
             percentage: { type: 'number' },
-            incorrectTopics: { type: 'array', items: { type: 'string' } },
+            grade: { type: 'string' },
+            topic: { type: 'string' },
           },
         },
       },
@@ -181,16 +206,39 @@ const apps = [
         },
       },
       {
+        name: 'save_drawing',
+        description: 'Save the current drawing and signal completion.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            strokeCount: { type: 'number' },
+            message: { type: 'string' },
+          },
+        },
+      },
+      {
+        name: 'clear_canvas',
+        description: 'Clear the drawing canvas.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: {
+          type: 'object',
+          properties: { success: { type: 'boolean' }, message: { type: 'string' } },
+        },
+      },
+      {
         name: 'get_drawing_info',
-        description: 'Get info about the current drawing (dimensions, stroke count).',
+        description: 'Get info about the current drawing (stroke count, dimensions).',
         inputSchema: { type: 'object', properties: {}, required: [] },
         outputSchema: {
           type: 'object',
           properties: {
             strokeCount: { type: 'number' },
-            isEmpty: { type: 'boolean' },
             width: { type: 'number' },
             height: { type: 'number' },
+            lastColor: { type: 'string' },
+            lastBrushSize: { type: 'number' },
           },
         },
       },
@@ -242,7 +290,7 @@ const apps = [
       },
       {
         name: 'create_playlist',
-        description: 'Create a new Spotify playlist.',
+        description: 'Create a new Spotify playlist with the tracks currently in the builder.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -257,6 +305,50 @@ const apps = [
             playlistId: { type: 'string' },
             name: { type: 'string' },
             url: { type: 'string' },
+            trackCount: { type: 'number' },
+          },
+        },
+      },
+      {
+        name: 'add_to_playlist',
+        description: 'Add a track (by ID from search results) to the playlist builder.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            trackId: { type: 'string', description: 'Spotify track ID from search_tracks results' },
+            trackName: { type: 'string', description: 'Track name (for display)' },
+            artist: { type: 'string', description: 'Artist name (for display)' },
+          },
+          required: ['trackId'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            trackAdded: { type: 'string' },
+            playlistSize: { type: 'number' },
+          },
+        },
+      },
+      {
+        name: 'get_user_playlists',
+        description: 'Get the user\'s existing Spotify playlists.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            playlists: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  trackCount: { type: 'number' },
+                  url: { type: 'string' },
+                },
+              },
+            },
           },
         },
       },
