@@ -30,25 +30,32 @@ app.use(helmet({
   },
 }))
 
-const ALLOWED_ORIGINS = new Set([
-  FRONTEND_URL,
-  VERCEL_URL,
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:1212',
-])
+// Sandboxed iframes (sandbox="allow-scripts" without allow-same-origin) send
+// Origin: null (the string). Browsers block Access-Control-Allow-Origin: null as a
+// security measure, but they DO allow Access-Control-Allow-Origin: *.
+// We intercept null-origin requests BEFORE cors() and set ACAO: * — safe because
+// we use Bearer token auth, not cookies, so credentials mode is irrelevant.
+app.use((req, res, next) => {
+  if (req.headers.origin === 'null') {
+    res.header('Access-Control-Allow-Origin', '*')
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204)
+      return
+    }
+  }
+  next()
+})
 
 app.use(cors({
-  // Allow known origins PLUS null-origin sandboxed iframes.
-  // Sandboxed iframes (sandbox="allow-scripts" without allow-same-origin) send
-  // Origin: null. Security still comes from JWT auth on every protected endpoint.
-  origin: (origin, callback) => {
-    if (!origin || ALLOWED_ORIGINS.has(origin)) {
-      callback(null, true)
-    } else {
-      callback(new Error(`CORS: origin '${origin}' not allowed`))
-    }
-  },
+  origin: [
+    FRONTEND_URL,
+    VERCEL_URL,
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:1212',
+  ],
   credentials: true,
 }))
 
