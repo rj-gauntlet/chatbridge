@@ -53,7 +53,7 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
   const [loadingConvs, setLoadingConvs] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const { activePlugin, iframeRef, openApp, closeApp, handleToolCallEvent, onCompletion } =
+  const { activePlugin, iframeRef, openApp, closeApp, handleToolCallEvent, onCompletion, onIframeLoad } =
     usePluginManager(API_URL, getToken)
 
   // Load conversations + apps on mount
@@ -239,7 +239,7 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
         {/* Active app iframe */}
         {activePlugin && (
           <Box px="md" pt="md">
-            <PluginFrame plugin={activePlugin} iframeRef={iframeRef} onClose={closeApp} />
+            <PluginFrame plugin={activePlugin} iframeRef={iframeRef} onClose={closeApp} onLoad={onIframeLoad} />
           </Box>
         )}
 

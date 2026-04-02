@@ -186,6 +186,23 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
     }
   }, [])
 
+  /** Called when the iframe's document finishes loading — used as a reliable ready signal */
+  const onIframeLoad = useCallback(() => {
+    setActivePlugin(prev => {
+      if (!prev || prev.status === 'ready') return prev
+      return { ...prev, status: 'ready' }
+    })
+    // Send auth credentials into the iframe after it's loaded
+    setTimeout(() => {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          { type: 'auth_token', token: getToken(), apiUrl },
+          '*',
+        )
+      }
+    }, 50)
+  }, [apiUrl, getToken])
+
   return {
     activePlugin,
     iframeRef,
@@ -193,6 +210,7 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
     closeApp,
     handleToolCallEvent,
     onCompletion,
+    onIframeLoad,
   }
 }
 
@@ -202,9 +220,10 @@ interface PluginFrameProps {
   plugin: PluginState
   iframeRef: React.RefObject<HTMLIFrameElement | null>
   onClose: () => void
+  onLoad: () => void
 }
 
-export function PluginFrame({ plugin, iframeRef, onClose }: PluginFrameProps) {
+export function PluginFrame({ plugin, iframeRef, onClose, onLoad }: PluginFrameProps) {
   return (
     <div style={{
       position: 'relative',
@@ -243,6 +262,7 @@ export function PluginFrame({ plugin, iframeRef, onClose }: PluginFrameProps) {
         src={plugin.iframeUrl}
         // Security: allow-scripts only (no allow-same-origin — prevents DOM access to parent)
         sandbox="allow-scripts allow-forms allow-popups"
+        onLoad={onLoad}
         style={{
           width: '100%',
           height: 520,
@@ -252,7 +272,6 @@ export function PluginFrame({ plugin, iframeRef, onClose }: PluginFrameProps) {
           transition: 'opacity 0.2s',
         }}
         title={`ChatBridge App: ${plugin.appSlug}`}
-        loading="lazy"
       />
     </div>
   )
