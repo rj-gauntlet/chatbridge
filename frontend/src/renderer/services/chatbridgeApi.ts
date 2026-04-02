@@ -4,21 +4,50 @@
  */
 
 const API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:3001'
+const SESSION_KEY = 'chatbridge_session'
+
+function getSession(): { access_token: string; refresh_token: string } | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
 
 function getAuthHeader(): Record<string, string> {
-  const session = localStorage.getItem('chatbridge_session')
-  if (!session) return {}
+  const session = getSession()
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+}
+
+/** Attempt to get a fresh access_token using the stored refresh_token. */
+async function tryRefreshToken(): Promise<boolean> {
+  const session = getSession()
+  if (!session?.refresh_token) return false
+
   try {
-    const { access_token } = JSON.parse(session)
-    return { Authorization: `Bearer ${access_token}` }
+    const res = await fetch(`${API_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: session.refresh_token }),
+    })
+    if (!res.ok) return false
+
+    const data = await res.json() as { session: { access_token: string; refresh_token: string }; user: { id: string; email: string } }
+    if (data.session?.access_token) {
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ ...data.session, user: data.user }))
+      return true
+    }
+    return false
   } catch {
-    return {}
+    return false
   }
 }
 
 async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
+  _retry = true,
 ): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
@@ -28,6 +57,18 @@ async function apiRequest<T>(
       ...options.headers,
     },
   })
+
+  // On 401, attempt one token refresh then retry
+  if (res.status === 401 && _retry) {
+    const refreshed = await tryRefreshToken()
+    if (refreshed) {
+      return apiRequest<T>(path, options, false)
+    }
+    // Refresh failed — clear session so user sees login screen
+    localStorage.removeItem(SESSION_KEY)
+    window.location.reload()
+    throw new Error('Session expired — please sign in again')
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }))

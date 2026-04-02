@@ -56,6 +56,27 @@ router.post('/login', async (req, res, next) => {
 })
 
 /**
+ * POST /api/auth/refresh
+ * Exchange a refresh_token for a new access_token
+ */
+router.post('/refresh', async (req, res, next) => {
+  try {
+    const { refresh_token } = req.body
+    if (!refresh_token) throw createError('refresh_token required', 400)
+
+    const { data, error } = await supabaseAnon.auth.refreshSession({ refresh_token })
+    if (error) throw createError(error.message, 401)
+
+    res.json({
+      user: { id: data.user?.id, email: data.user?.email },
+      session: data.session,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
  * POST /api/auth/logout
  * Log out the current user
  */
