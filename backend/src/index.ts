@@ -30,14 +30,25 @@ app.use(helmet({
   },
 }))
 
+const ALLOWED_ORIGINS = new Set([
+  FRONTEND_URL,
+  VERCEL_URL,
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:1212',
+])
+
 app.use(cors({
-  origin: [
-    FRONTEND_URL,
-    VERCEL_URL,
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://localhost:1212',
-  ],
+  // Allow known origins PLUS null-origin sandboxed iframes.
+  // Sandboxed iframes (sandbox="allow-scripts" without allow-same-origin) send
+  // Origin: null. Security still comes from JWT auth on every protected endpoint.
+  origin: (origin, callback) => {
+    if (!origin || ALLOWED_ORIGINS.has(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error(`CORS: origin '${origin}' not allowed`))
+    }
+  },
   credentials: true,
 }))
 
