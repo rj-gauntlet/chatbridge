@@ -101,6 +101,7 @@ export function AuthPage({ onSignIn, onSignUp, loading, error }: AuthPageProps) 
             </Text>
             <Anchor
               size="sm"
+              c="blue"
               onClick={() => {
                 setMode(mode === 'login' ? 'register' : 'login')
                 setMessage(null)
