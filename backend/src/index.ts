@@ -2,6 +2,7 @@ import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
 import helmet from 'helmet'
+import path from 'path'
 import { errorHandler } from './middleware/errorHandler'
 import authRoutes from './routes/auth'
 import chatRoutes from './routes/chat'
@@ -13,20 +14,25 @@ import webhookRoutes from './routes/webhooks'
 const app = express()
 const PORT = process.env.PORT || 3001
 
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
+
 // ── Security middleware ──────────────────────────────────────
 app.use(helmet({
   crossOriginEmbedderPolicy: false, // needed for iframe embedding
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      frameAncestors: ["'self'", process.env.FRONTEND_URL || 'http://localhost:5173'],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://sdk.scdn.co'],
+      connectSrc: ["'self'", 'https://api.spotify.com', 'https://accounts.spotify.com', FRONTEND_URL],
+      frameAncestors: ["'self'", FRONTEND_URL, 'http://localhost:5173', 'http://localhost:1212'],
     },
   },
 }))
 
 app.use(cors({
   origin: [
-    process.env.FRONTEND_URL || 'http://localhost:5173',
+    FRONTEND_URL,
+    'http://localhost:5173',
     'http://localhost:3000',
     'http://localhost:1212',
   ],
@@ -34,6 +40,20 @@ app.use(cors({
 }))
 
 app.use(express.json({ limit: '2mb' }))
+
+// ── Static app files (served at /apps/<slug>/) ───────────────
+// Each mini-app's built dist/ is committed to backend/public/apps/<slug>/
+// process.cwd() is always the backend/ directory (start cmd: cd backend && npm start)
+app.use('/apps', express.static(path.join(process.cwd(), 'public/apps'), {
+  setHeaders: (res) => {
+    // Allow these static app files to be embedded by the frontend
+    res.setHeader('X-Frame-Options', 'ALLOWALL')
+    res.setHeader(
+      'Content-Security-Policy',
+      `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co; connect-src 'self' https://api.spotify.com https://accounts.spotify.com ${FRONTEND_URL}; frame-ancestors 'self' ${FRONTEND_URL} http://localhost:5173 http://localhost:1212`,
+    )
+  },
+}))
 
 // ── Routes ───────────────────────────────────────────────────
 app.use('/api/auth', authRoutes)

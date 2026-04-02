@@ -9,6 +9,8 @@ frontend/release/app/dist/
 frontend/release/app/node_modules/
 apps/*/dist/
 backend/dist/
+# Keep app static files that are served by the backend
+!backend/public/apps/
 
 # Env files (keep .env.example)
 .env
