@@ -168,9 +168,9 @@ export default function App() {
   }, [syncState, gameState.status])
 
   // Allow player to move pieces directly on the board too
-  const onDrop = useCallback((sourceSquare: string, targetSquare: string) => {
+  const onDrop = useCallback(({ sourceSquare, targetSquare }: { piece: unknown; sourceSquare: string; targetSquare: string | null }) => {
     const chess = chessRef.current
-    if (chess.isGameOver()) return false
+    if (chess.isGameOver() || !targetSquare) return false
 
     try {
       const move = chess.move({ from: sourceSquare, to: targetSquare, promotion: 'q' })
@@ -221,12 +221,14 @@ export default function App() {
       {/* Board */}
       <div style={{ width: '100%', maxWidth: 480 }}>
         <Chessboard
-          position={gameState.fen}
-          onPieceDrop={onDrop}
-          customSquareStyles={customSquareStyles}
-          boardWidth={Math.min(480, window.innerWidth - 32)}
-          areArrowsAllowed
-          animationDuration={150}
+          options={{
+            position: gameState.fen,
+            onPieceDrop: onDrop,
+            squareStyles: customSquareStyles,
+            boardStyle: { width: Math.min(480, window.innerWidth - 32) },
+            allowDrawingArrows: true,
+            animationDurationInMs: 150,
+          }}
         />
       </div>
 
