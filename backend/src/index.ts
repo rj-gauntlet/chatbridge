@@ -48,7 +48,11 @@ app.use(express.json({ limit: '2mb' }))
 // process.cwd() is always the backend/ directory (start cmd: cd backend && npm start)
 app.use('/apps', express.static(path.join(process.cwd(), 'public/apps'), {
   setHeaders: (res) => {
-    // Allow these static app files to be embedded by the frontend
+    // Allow these static app files to be embedded by the frontend.
+    // IMPORTANT: Access-Control-Allow-Origin: * is required because sandboxed iframes
+    // (without allow-same-origin) have an opaque/null origin. ES module scripts always
+    // fetch in CORS mode, so without this header the browser blocks index.js from loading.
+    res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('X-Frame-Options', 'ALLOWALL')
     res.setHeader(
       'Content-Security-Policy',
