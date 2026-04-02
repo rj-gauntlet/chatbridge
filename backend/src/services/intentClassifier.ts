@@ -28,12 +28,18 @@ Respond with ONLY the app slug (e.g. "chess") if the message clearly targets an 
 Do not explain. Respond with exactly one word.`
 
   try {
+    console.log('[IntentClassifier] calling OpenAI...')
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 15_000)
     const { text } = await generateText({
       model: openai(CLASSIFIER_MODEL),
       prompt,
       maxTokens: 10,
       temperature: 0,
+      abortSignal: controller.signal,
     })
+    clearTimeout(timer)
+    console.log('[IntentClassifier] got response:', text.trim())
 
     const slug = text.trim().toLowerCase().replace(/['"]/g, '')
     if (slug === 'null' || !slug) return null

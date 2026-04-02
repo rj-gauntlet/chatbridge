@@ -161,6 +161,7 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
       .select('id').single()
 
     sseWrite(res, { type: 'start', conversationId, messageId: userMsg?.id })
+    console.log('[chat] sent start event for conversation:', conversationId)
 
     // ── Load history ────────────────────────────────────────
     const { data: history } = await supabaseAdmin
@@ -199,6 +200,13 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
 
     // ── Stream AI response ───────────────────────────────────
     let assistantContent = ''
+    console.log('[chat] starting streamText call to OpenAI, model:', DEFAULT_MODEL)
+
+    const streamController = new AbortController()
+    const streamTimer = setTimeout(() => {
+      console.log('[chat] streamText timed out after 60s, aborting')
+      streamController.abort()
+    }, 60_000)
 
     const streamResult = await streamText({
       model: openai(DEFAULT_MODEL),
@@ -209,6 +217,7 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
       tools: Object.keys(tools).length > 0 ? tools : undefined,
       maxTokens: 1024,
       temperature: 0.7,
+      abortSignal: streamController.signal,
       onChunk: ({ chunk }) => {
         if (chunk.type === 'text-delta') {
           assistantContent += chunk.textDelta
@@ -218,6 +227,8 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
     })
 
     await streamResult.text
+    clearTimeout(streamTimer)
+    console.log('[chat] streamText completed, assistant content length:', assistantContent.length)
 
     // Persist assistant message
     const { data: assistantMsg } = await supabaseAdmin
