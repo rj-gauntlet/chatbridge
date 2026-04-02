@@ -217,6 +217,7 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
         : ''),
       messages,
       tools: Object.keys(tools).length > 0 ? tools : undefined,
+      maxSteps: 3, // Allow: tool call → tool result → final text response
       maxTokens: 1024,
       temperature: 0.7,
       abortSignal: genController.signal,
