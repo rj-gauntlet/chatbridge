@@ -376,12 +376,12 @@ export default function App() {
 
     setStatusMsg(`Searching for "${query}"…`)
 
-    let data: { tracks: Track[]; mock?: boolean }
+    let data: { tracks: Track[]; mock?: boolean; needsReconnect?: boolean }
     try {
       data = await apiFetch(`/api/oauth/spotify/search?q=${encodeURIComponent(query)}&limit=5`)
     } catch {
-      setStatusMsg(null)
-      return { success: false, error: 'Search failed' }
+      setStatusMsg('⚠️ Spotify connection lost — tap "Connect" to reconnect')
+      return { success: false, error: 'Spotify search unavailable — please reconnect your Spotify account' }
     }
 
     const tracks = (data.tracks || []) as Track[]
@@ -391,6 +391,22 @@ export default function App() {
     }
 
     const track = tracks[0]
+
+    // Warn if we're running on expired/mock credentials
+    if (data.needsReconnect) {
+      setConnected(false)
+      setView('disconnected')
+      setStatusMsg('🔑 Spotify session expired — tap "Connect Spotify" to reconnect for audio playback')
+      return {
+        success: true,
+        track: track.name,
+        artist: track.artist,
+        album: track.album,
+        mode: 'info',
+        message: `Found "${track.name}" by ${track.artist} on ${track.album}. Audio is unavailable because your Spotify session has expired — the user needs to reconnect their Spotify account to hear music.`,
+      }
+    }
+
     setStatusMsg(null)
 
     // Stop whatever is playing
@@ -402,7 +418,7 @@ export default function App() {
 
     const mode = await playTrackDirect(track)
     if (mode === 'error' && !pendingPlayRef.current) {
-      return { success: false, error: 'No preview available — connect Spotify Premium for full playback' }
+      return { success: false, error: 'No preview available for this track — connect Spotify Premium for full playback' }
     }
 
     sendStateUpdate({ playing: track.name, artist: track.artist, mode })

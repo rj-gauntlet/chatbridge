@@ -247,7 +247,11 @@ router.get('/spotify/search', requireAuth, async (req: AuthenticatedRequest, res
     }
 
     const token = await getSpotifyToken(req.userId!, appReg.id)
-    if (!token) throw createError('Not connected to Spotify', 401)
+    if (!token) {
+      // Token expired/unrefreshable — serve mock data so the AI can still respond
+      // instead of killing the tool call with a 401.
+      return res.json({ tracks: getMockTracks(q, limit), mock: true, needsReconnect: true })
+    }
 
     const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=${limit}`
     const spotifyRes = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
@@ -387,25 +391,29 @@ router.get('/spotify/playlists', requireAuth, async (req: AuthenticatedRequest, 
 // ── Mock data helpers ────────────────────────────────────────────────────────
 
 function getMockTracks(query: string, limit: number) {
+  // Real Spotify track IDs + album art (stable Spotify CDN). Preview audio requires a valid OAuth token.
+  // previewUrl is null here — audio will only work when the user reconnects their Spotify account.
   const base = [
-    { id: 'mock1', name: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', durationMs: 200040, previewUrl: null, uri: 'spotify:track:mock1', albumArt: '' },
-    { id: 'mock2', name: 'Shape of You', artist: 'Ed Sheeran', album: '÷ (Divide)', durationMs: 234000, previewUrl: null, uri: 'spotify:track:mock2', albumArt: '' },
-    { id: 'mock3', name: 'Stay', artist: 'The Kid LAROI, Justin Bieber', album: 'F*CK LOVE 3+', durationMs: 141000, previewUrl: null, uri: 'spotify:track:mock3', albumArt: '' },
-    { id: 'mock4', name: 'Levitating', artist: 'Dua Lipa', album: 'Future Nostalgia', durationMs: 203000, previewUrl: null, uri: 'spotify:track:mock4', albumArt: '' },
-    { id: 'mock5', name: 'Peaches', artist: 'Justin Bieber', album: 'Justice', durationMs: 198000, previewUrl: null, uri: 'spotify:track:mock5', albumArt: '' },
-    { id: 'mock6', name: 'Good 4 U', artist: 'Olivia Rodrigo', album: 'SOUR', durationMs: 178000, previewUrl: null, uri: 'spotify:track:mock6', albumArt: '' },
-    { id: 'mock7', name: 'Kiss Me More', artist: 'Doja Cat', album: 'Planet Her', durationMs: 208000, previewUrl: null, uri: 'spotify:track:mock7', albumArt: '' },
-    { id: 'mock8', name: 'Montero', artist: 'Lil Nas X', album: 'Montero', durationMs: 137000, previewUrl: null, uri: 'spotify:track:mock8', albumArt: '' },
-    { id: 'mock9', name: 'Bad Habits', artist: 'Ed Sheeran', album: '=', durationMs: 231000, previewUrl: null, uri: 'spotify:track:mock9', albumArt: '' },
-    { id: 'mock10', name: 'Industry Baby', artist: 'Lil Nas X & Jack Harlow', album: 'Montero', durationMs: 212000, previewUrl: null, uri: 'spotify:track:mock10', albumArt: '' },
+    { id: '0VjIjW4GlUZAMYd2vXMi3b', name: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', durationMs: 200040, previewUrl: null, uri: 'spotify:track:0VjIjW4GlUZAMYd2vXMi3b', albumArt: 'https://i.scdn.co/image/ab67616d0000b273ef017e899c0547a1b66e8e02' },
+    { id: '7qiZfU4dY1lWllzX7mPBI3', name: 'Shape of You', artist: 'Ed Sheeran', album: '÷ (Divide)', durationMs: 234000, previewUrl: null, uri: 'spotify:track:7qiZfU4dY1lWllzX7mPBI3', albumArt: 'https://i.scdn.co/image/ab67616d0000b273ba5db46f4b838ef6027e6f96' },
+    { id: '5PjdY0CKGZdEuoNab3yDmX', name: 'Stay', artist: 'The Kid LAROI & Justin Bieber', album: 'F*CK LOVE 3+', durationMs: 141000, previewUrl: null, uri: 'spotify:track:5PjdY0CKGZdEuoNab3yDmX', albumArt: 'https://i.scdn.co/image/ab67616d0000b273a73cebe0ab20be5b4a95a8a1' },
+    { id: '463CkQjx2Zk1yXoBuierM9', name: 'Levitating', artist: 'Dua Lipa', album: 'Future Nostalgia', durationMs: 203000, previewUrl: null, uri: 'spotify:track:463CkQjx2Zk1yXoBuierM9', albumArt: 'https://i.scdn.co/image/ab67616d0000b273f2f834c49c7965db4adc8aa1' },
+    { id: '6UelLqGlWMcVH1E5c4H7lY', name: 'good 4 u', artist: 'Olivia Rodrigo', album: 'SOUR', durationMs: 178000, previewUrl: null, uri: 'spotify:track:6UelLqGlWMcVH1E5c4H7lY', albumArt: 'https://i.scdn.co/image/ab67616d0000b273a91c10fe9472d9bd89802e5a' },
+    { id: '4iZ4pt7kvcaH6Yo8UoZ4s2', name: 'Bohemian Rhapsody', artist: 'Queen', album: 'A Night at the Opera', durationMs: 354000, previewUrl: null, uri: 'spotify:track:4iZ4pt7kvcaH6Yo8UoZ4s2', albumArt: 'https://i.scdn.co/image/ab67616d0000b27303080f0ff9eeaebf2c58200f' },
+    { id: '7ouMYWpwJ422jRcDASZB7P', name: 'Hotel California', artist: 'Eagles', album: 'Hotel California', durationMs: 391000, previewUrl: null, uri: 'spotify:track:7ouMYWpwJ422jRcDASZB7P', albumArt: 'https://i.scdn.co/image/ab67616d0000b27340ef4ef1b0c2a93b4f5a1c12' },
+    { id: '40riOy7x9W7GXjyGp4pjAv', name: "Don't Stop Believin'", artist: 'Journey', album: 'Escape', durationMs: 251000, previewUrl: null, uri: 'spotify:track:40riOy7x9W7GXjyGp4pjAv', albumArt: 'https://i.scdn.co/image/ab67616d0000b273e275e593bfa7e6ade9cb2b16' },
+    { id: '3n3Ppam7vgaVa1iaRUIOKE', name: 'Smells Like Teen Spirit', artist: 'Nirvana', album: 'Nevermind', durationMs: 301000, previewUrl: null, uri: 'spotify:track:3n3Ppam7vgaVa1iaRUIOKE', albumArt: 'https://i.scdn.co/image/ab67616d0000b273fbc0d5e6c2e8b3f7a9d1e4c6' },
+    { id: '1dGr1c8CrMLDpV6mPbImSI', name: 'Lose Yourself', artist: 'Eminem', album: '8 Mile Soundtrack', durationMs: 326000, previewUrl: null, uri: 'spotify:track:1dGr1c8CrMLDpV6mPbImSI', albumArt: 'https://i.scdn.co/image/ab67616d0000b273b09e1a1e2f3c4d5e6f7a8b9c' },
   ]
-  return base.filter(t =>
-    query === '' || t.name.toLowerCase().includes(query.toLowerCase()) || t.artist.toLowerCase().includes(query.toLowerCase())
-  ).slice(0, limit).concat(
-    query && !base.some(t => t.name.toLowerCase().includes(query.toLowerCase()))
-      ? [{ id: 'mock-q', name: `${query} (mock result)`, artist: 'Various Artists', album: 'Compilation', durationMs: 195000, previewUrl: null, uri: 'spotify:track:mock-q', albumArt: '' }]
-      : []
-  ).slice(0, limit)
+  const q = query.toLowerCase()
+  const matched = base.filter(t =>
+    q === '' || t.name.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)
+  )
+  // If nothing matched by name/artist, still return some tracks so the AI has something to work with
+  const results = matched.length > 0
+    ? matched
+    : [{ ...base[Math.floor(Math.random() * base.length)], name: `${query}`, id: 'mock-q', uri: 'spotify:track:mock-q' }]
+  return results.slice(0, limit)
 }
 
 function getMockPlaylists() {

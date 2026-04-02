@@ -26,6 +26,10 @@ const PLATFORM_ORIGIN = window.location.origin
  */
 export function usePluginManager(apiUrl: string, getToken: () => string | null) {
   const [activePlugin, setActivePlugin] = useState<PluginState | null>(null)
+  // Ref mirrors the state so closures created before a re-render still read the latest value.
+  // This fixes the stale-closure bug where handleToolCallEvent sees activePlugin=null even
+  // after openApp() has been called (React re-render hasn't flushed yet).
+  const activePluginRef = useRef<PluginState | null>(null)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const pendingCalls = useRef<Map<string, PendingCall>>(new Map())
   const completionCallbacks = useRef<Array<(summary: string, state?: Record<string, unknown>) => void>>([])
@@ -39,8 +43,12 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
       if (!msg?.type) return
 
       switch (msg.type) {
-        case 'ready':
-          setActivePlugin(prev => prev ? { ...prev, status: 'ready' } : null)
+        case 'ready': {
+          const readyPlugin = activePluginRef.current
+            ? { ...activePluginRef.current, status: 'ready' as const }
+            : null
+          activePluginRef.current = readyPlugin
+          setActivePlugin(readyPlugin)
           // Inject ChatBridge credentials into the iframe so it can call the backend
           if (iframeRef.current?.contentWindow) {
             iframeRef.current.contentWindow.postMessage(
@@ -49,6 +57,7 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
             )
           }
           break
+        }
 
         case 'tool_result': {
           const pending = pendingCalls.current.get(msg.correlationId || '')
@@ -92,12 +101,14 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
 
   /** Open an app (mount iframe) */
   const openApp = useCallback((appSlug: string, iframeUrl: string) => {
-    setActivePlugin({ appSlug, iframeUrl, status: 'loading' })
+    const plugin: PluginState = { appSlug, iframeUrl, status: 'loading' }
+    activePluginRef.current = plugin
+    setActivePlugin(plugin)
   }, [])
 
   /** Close the current app */
   const closeApp = useCallback(() => {
-    if (iframeRef.current && activePlugin) {
+    if (iframeRef.current && activePluginRef.current) {
       iframeRef.current.contentWindow?.postMessage({ type: 'app_close' }, '*')
     }
     // Clear pending calls
@@ -106,8 +117,9 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
       pending.reject(new Error('App closed'))
     }
     pendingCalls.current.clear()
+    activePluginRef.current = null
     setActivePlugin(null)
-  }, [activePlugin])
+  }, [])
 
   /**
    * Invoke a tool on the active app via postMessage relay.
@@ -142,16 +154,19 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
    */
   const handleToolCallEvent = useCallback(
     async (appSlug: string, toolName: string, correlationId: string, parameters: Record<string, unknown>) => {
-      // Open the app if not already open
-      if (!activePlugin || activePlugin.appSlug !== appSlug) {
-        console.warn('[PluginManager] Received tool_call for inactive app:', appSlug)
+      // Use the ref (not state) so we always see the value set by openApp(),
+      // even if the React re-render hasn't flushed yet (stale-closure fix).
+      const currentPlugin = activePluginRef.current
+      if (!currentPlugin || currentPlugin.appSlug !== appSlug) {
+        console.warn('[PluginManager] Received tool_call for inactive app:', appSlug,
+          '| activePluginRef:', activePluginRef.current?.appSlug ?? 'null')
         // Send failure result back to backend
         const token = getToken()
         await fetch(`${apiUrl}/api/chat/tool-result`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ correlationId, result: { error: 'App not open' } }),
-        }).catch(console.error)
+        }).catch((e) => console.error('[PluginManager] tool-result POST failed (app not open):', e))
         return
       }
 
@@ -175,7 +190,9 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
         }).catch(console.error)
       }
     },
-    [activePlugin, apiUrl, getToken, invokeToolViaPostMessage],
+    // activePluginRef is a ref — no need to list it as a dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [apiUrl, getToken, invokeToolViaPostMessage],
   )
 
   /** Register a completion callback */
