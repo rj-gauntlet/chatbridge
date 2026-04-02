@@ -245,9 +245,9 @@ const apps = [
     ],
   },
   {
-    name: 'Spotify Playlist Creator',
+    name: 'Spotify Player',
     slug: 'spotify',
-    description: 'Create and manage Spotify playlists. Search for tracks, build playlists, and connect to Spotify. Use when user mentions Spotify, wants to create a playlist, search for music, or manage their music.',
+    description: 'AI-controlled Spotify music player. Plays tracks, pauses, resumes, skips, adjusts volume, and queues songs. Supports Spotify Premium for full songs or free accounts for 30-second previews. Use when user wants to listen to music, play a specific song, or control music playback.',
     icon_url: '🎵',
     iframe_url: `${APPS_BASE}/spotify/index.html`,
     auth_type: 'oauth2',
@@ -255,100 +255,86 @@ const apps = [
       auth_url: 'https://accounts.spotify.com/authorize',
       token_url: 'https://accounts.spotify.com/api/token',
       client_id: process.env.SPOTIFY_CLIENT_ID || '',
-      scopes: ['playlist-modify-public', 'playlist-modify-private', 'user-read-private'],
+      scopes: [
+        'streaming',
+        'user-read-email',
+        'user-read-private',
+        'user-read-playback-state',
+        'user-modify-playback-state',
+        'user-read-currently-playing',
+      ],
     },
     status: 'active',
     tools: [
       {
-        name: 'search_tracks',
-        description: 'Search for tracks on Spotify.',
+        name: 'play_track',
+        description: 'Search for a track and play it immediately. Use for requests like "play Smells Like Teen Spirit" or "put on some jazz".',
         inputSchema: {
           type: 'object',
           properties: {
-            query: { type: 'string', description: 'Search query' },
-            limit: { type: 'number', description: 'Max results (default 10)' },
+            query: { type: 'string', description: 'Song name, artist, or search query' },
           },
           required: ['query'],
         },
         outputSchema: {
           type: 'object',
           properties: {
-            tracks: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  name: { type: 'string' },
-                  artist: { type: 'string' },
-                  album: { type: 'string' },
-                },
-              },
-            },
+            success: { type: 'boolean' },
+            track: { type: 'string' },
+            artist: { type: 'string' },
+            album: { type: 'string' },
+            mode: { type: 'string', description: '"sdk" for Premium full track, "preview" for 30-second clip' },
+            error: { type: 'string' },
           },
         },
       },
       {
-        name: 'create_playlist',
-        description: 'Create a new Spotify playlist with the tracks currently in the builder.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Playlist name' },
-            description: { type: 'string', description: 'Optional description' },
-          },
-          required: ['name'],
-        },
-        outputSchema: {
-          type: 'object',
-          properties: {
-            playlistId: { type: 'string' },
-            name: { type: 'string' },
-            url: { type: 'string' },
-            trackCount: { type: 'number' },
-          },
-        },
+        name: 'pause_playback',
+        description: 'Pause the currently playing track.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: { type: 'object', properties: { success: { type: 'boolean' } } },
       },
       {
-        name: 'add_to_playlist',
-        description: 'Add a track (by ID from search results) to the playlist builder.',
+        name: 'resume_playback',
+        description: 'Resume the paused track.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: { type: 'object', properties: { success: { type: 'boolean' } } },
+      },
+      {
+        name: 'set_volume',
+        description: 'Set playback volume from 0 (mute) to 100 (full).',
         inputSchema: {
           type: 'object',
           properties: {
-            trackId: { type: 'string', description: 'Spotify track ID from search_tracks results' },
-            trackName: { type: 'string', description: 'Track name (for display)' },
-            artist: { type: 'string', description: 'Artist name (for display)' },
+            level: { type: 'number', description: 'Volume level 0–100' },
           },
-          required: ['trackId'],
+          required: ['level'],
+        },
+        outputSchema: { type: 'object', properties: { success: { type: 'boolean' }, level: { type: 'number' } } },
+      },
+      {
+        name: 'skip_to_next',
+        description: 'Skip to the next track in the queue.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: { type: 'object', properties: { success: { type: 'boolean' }, track: { type: 'string' } } },
+      },
+      {
+        name: 'queue_track',
+        description: 'Add a track to the playback queue without stopping current track.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Song name or artist to search and queue' },
+          },
+          required: ['query'],
         },
         outputSchema: {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            trackAdded: { type: 'string' },
-            playlistSize: { type: 'number' },
-          },
-        },
-      },
-      {
-        name: 'get_user_playlists',
-        description: 'Get the user\'s existing Spotify playlists.',
-        inputSchema: { type: 'object', properties: {}, required: [] },
-        outputSchema: {
-          type: 'object',
-          properties: {
-            playlists: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  name: { type: 'string' },
-                  trackCount: { type: 'number' },
-                  url: { type: 'string' },
-                },
-              },
-            },
+            track: { type: 'string' },
+            artist: { type: 'string' },
+            queueLength: { type: 'number' },
           },
         },
       },

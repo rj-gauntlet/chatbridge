@@ -41,6 +41,13 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
       switch (msg.type) {
         case 'ready':
           setActivePlugin(prev => prev ? { ...prev, status: 'ready' } : null)
+          // Inject ChatBridge credentials into the iframe so it can call the backend
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+              { type: 'auth_token', token: getToken(), apiUrl },
+              '*',
+            )
+          }
           break
 
         case 'tool_result': {

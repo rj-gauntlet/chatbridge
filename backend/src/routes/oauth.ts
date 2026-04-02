@@ -198,6 +198,31 @@ router.get('/spotify/status', requireAuth, async (req: AuthenticatedRequest, res
 })
 
 /**
+ * GET /api/oauth/spotify/token
+ * Return current Spotify access token for Web Playback SDK initialization.
+ * Backend handles refresh automatically via getSpotifyToken().
+ */
+router.get('/spotify/token', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { data: appReg } = await supabaseAdmin
+      .from('app_registrations').select('id').eq('slug', 'spotify').single()
+
+    if (!appReg) throw createError('Spotify app not registered', 404)
+
+    if (!process.env.SPOTIFY_CLIENT_ID) {
+      return res.json({ token: null, mock: true })
+    }
+
+    const token = await getSpotifyToken(req.userId!, appReg.id)
+    if (!token) throw createError('Not connected to Spotify — please reconnect', 401)
+
+    res.json({ token })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
  * GET /api/oauth/spotify/search?q=...&limit=10
  * Proxy search to Spotify API
  */
@@ -230,7 +255,18 @@ router.get('/spotify/search', requireAuth, async (req: AuthenticatedRequest, res
     if (!spotifyRes.ok) throw createError('Spotify API error', spotifyRes.status)
 
     const data = await spotifyRes.json() as {
-      tracks: { items: Array<{ id: string; name: string; artists: Array<{ name: string }>; album: { name: string }; duration_ms: number; external_urls: { spotify: string } }> }
+      tracks: {
+        items: Array<{
+          id: string
+          name: string
+          uri: string
+          artists: Array<{ name: string }>
+          album: { name: string; images: Array<{ url: string }> }
+          duration_ms: number
+          preview_url: string | null
+          external_urls: { spotify: string }
+        }>
+      }
     }
 
     const tracks = data.tracks.items.map(t => ({
@@ -240,6 +276,9 @@ router.get('/spotify/search', requireAuth, async (req: AuthenticatedRequest, res
       album: t.album.name,
       durationMs: t.duration_ms,
       url: t.external_urls.spotify,
+      previewUrl: t.preview_url,
+      uri: t.uri,
+      albumArt: t.album.images[0]?.url ?? '',
     }))
 
     res.json({ tracks })
@@ -349,22 +388,22 @@ router.get('/spotify/playlists', requireAuth, async (req: AuthenticatedRequest, 
 
 function getMockTracks(query: string, limit: number) {
   const base = [
-    { id: 'mock1', name: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', durationMs: 200040 },
-    { id: 'mock2', name: 'Shape of You', artist: 'Ed Sheeran', album: '÷ (Divide)', durationMs: 234000 },
-    { id: 'mock3', name: 'Stay', artist: 'The Kid LAROI, Justin Bieber', album: 'F*CK LOVE 3+', durationMs: 141000 },
-    { id: 'mock4', name: 'Levitating', artist: 'Dua Lipa', album: 'Future Nostalgia', durationMs: 203000 },
-    { id: 'mock5', name: 'Peaches', artist: 'Justin Bieber', album: 'Justice', durationMs: 198000 },
-    { id: 'mock6', name: 'Good 4 U', artist: 'Olivia Rodrigo', album: 'SOUR', durationMs: 178000 },
-    { id: 'mock7', name: 'Kiss Me More', artist: 'Doja Cat', album: 'Planet Her', durationMs: 208000 },
-    { id: 'mock8', name: 'Montero', artist: 'Lil Nas X', album: 'Montero', durationMs: 137000 },
-    { id: 'mock9', name: 'Bad Habits', artist: 'Ed Sheeran', album: '=', durationMs: 231000 },
-    { id: 'mock10', name: 'Industry Baby', artist: 'Lil Nas X & Jack Harlow', album: 'Montero', durationMs: 212000 },
+    { id: 'mock1', name: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', durationMs: 200040, previewUrl: null, uri: 'spotify:track:mock1', albumArt: '' },
+    { id: 'mock2', name: 'Shape of You', artist: 'Ed Sheeran', album: '÷ (Divide)', durationMs: 234000, previewUrl: null, uri: 'spotify:track:mock2', albumArt: '' },
+    { id: 'mock3', name: 'Stay', artist: 'The Kid LAROI, Justin Bieber', album: 'F*CK LOVE 3+', durationMs: 141000, previewUrl: null, uri: 'spotify:track:mock3', albumArt: '' },
+    { id: 'mock4', name: 'Levitating', artist: 'Dua Lipa', album: 'Future Nostalgia', durationMs: 203000, previewUrl: null, uri: 'spotify:track:mock4', albumArt: '' },
+    { id: 'mock5', name: 'Peaches', artist: 'Justin Bieber', album: 'Justice', durationMs: 198000, previewUrl: null, uri: 'spotify:track:mock5', albumArt: '' },
+    { id: 'mock6', name: 'Good 4 U', artist: 'Olivia Rodrigo', album: 'SOUR', durationMs: 178000, previewUrl: null, uri: 'spotify:track:mock6', albumArt: '' },
+    { id: 'mock7', name: 'Kiss Me More', artist: 'Doja Cat', album: 'Planet Her', durationMs: 208000, previewUrl: null, uri: 'spotify:track:mock7', albumArt: '' },
+    { id: 'mock8', name: 'Montero', artist: 'Lil Nas X', album: 'Montero', durationMs: 137000, previewUrl: null, uri: 'spotify:track:mock8', albumArt: '' },
+    { id: 'mock9', name: 'Bad Habits', artist: 'Ed Sheeran', album: '=', durationMs: 231000, previewUrl: null, uri: 'spotify:track:mock9', albumArt: '' },
+    { id: 'mock10', name: 'Industry Baby', artist: 'Lil Nas X & Jack Harlow', album: 'Montero', durationMs: 212000, previewUrl: null, uri: 'spotify:track:mock10', albumArt: '' },
   ]
   return base.filter(t =>
     query === '' || t.name.toLowerCase().includes(query.toLowerCase()) || t.artist.toLowerCase().includes(query.toLowerCase())
   ).slice(0, limit).concat(
     query && !base.some(t => t.name.toLowerCase().includes(query.toLowerCase()))
-      ? [{ id: 'mock-q', name: `${query} (mock result)`, artist: 'Various Artists', album: 'Compilation', durationMs: 195000 }]
+      ? [{ id: 'mock-q', name: `${query} (mock result)`, artist: 'Various Artists', album: 'Compilation', durationMs: 195000, previewUrl: null, uri: 'spotify:track:mock-q', albumArt: '' }]
       : []
   ).slice(0, limit)
 }

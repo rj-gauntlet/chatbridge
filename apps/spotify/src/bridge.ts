@@ -1,5 +1,5 @@
 /**
- * ChatBridge postMessage bridge — flashcards app side.
+ * ChatBridge postMessage bridge — Spotify app side.
  * Handles incoming tool invocations and sends results/state back to platform.
  */
 
@@ -8,6 +8,13 @@ export type ToolHandler = (params: Record<string, unknown>) => Promise<Record<st
 const APP_SLUG = 'spotify'
 let handlers: Map<string, ToolHandler> = new Map()
 let allowedOrigin: string | null = null
+
+// Auth credentials injected by the platform via auth_token postMessage
+let chatbridgeToken = ''
+let chatbridgeApiUrl = ''
+
+export function getToken(): string { return chatbridgeToken }
+export function getApiUrl(): string { return chatbridgeApiUrl || 'http://localhost:3001' }
 
 export function registerTool(name: string, handler: ToolHandler) {
   handlers.set(name, handler)
@@ -40,6 +47,13 @@ export function initBridge(trustedOrigin?: string) {
     if (allowedOrigin && event.origin !== allowedOrigin) return
 
     const msg = event.data as { type?: string; correlationId?: string; toolName?: string; parameters?: Record<string, unknown> }
+
+    if (msg.type === 'auth_token') {
+      const m = msg as unknown as { type: string; token?: string; apiUrl?: string }
+      chatbridgeToken = m.token || ''
+      chatbridgeApiUrl = m.apiUrl || ''
+      return
+    }
 
     if (msg.type === 'ping') {
       sendToParent({ type: 'pong' })

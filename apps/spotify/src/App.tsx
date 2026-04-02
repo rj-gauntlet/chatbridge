@@ -1,5 +1,48 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { registerTool, initBridge, sendStateUpdate, sendCompletion } from './bridge'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { getApiUrl, getToken, initBridge, registerTool, sendStateUpdate } from './bridge'
+
+// ── Spotify Web Playback SDK type declarations ─────────────────────────────
+
+declare global {
+  interface Window {
+    onSpotifyWebPlaybackSDKReady: () => void
+    Spotify: {
+      Player: new (config: SpotifyPlayerConfig) => SpotifyPlayer
+    }
+  }
+}
+
+interface SpotifyPlayerConfig {
+  name: string
+  getOAuthToken: (cb: (token: string) => void) => void
+  volume?: number
+}
+
+interface SpotifyPlayer {
+  connect: () => Promise<boolean>
+  disconnect: () => void
+  addListener: (event: string, cb: (data: any) => void) => boolean  // eslint-disable-line @typescript-eslint/no-explicit-any
+  getCurrentState: () => Promise<SpotifyPlaybackState | null>
+  setVolume: (vol: number) => Promise<void>
+  pause: () => Promise<void>
+  resume: () => Promise<void>
+  nextTrack: () => Promise<void>
+}
+
+interface SpotifyPlaybackState {
+  paused: boolean
+  position: number
+  duration: number
+  track_window: {
+    current_track: {
+      id: string
+      name: string
+      uri: string
+      artists: Array<{ name: string }>
+      album: { name: string; images: Array<{ url: string }> }
+    }
+  }
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -8,413 +51,670 @@ interface Track {
   name: string
   artist: string
   album: string
-  durationMs?: number
-  url?: string
-  mock?: boolean
+  albumArt: string
+  previewUrl: string | null
+  uri: string
 }
 
-interface Playlist {
-  id: string
-  name: string
-  trackCount: number
-  url?: string
-}
+type AppView = 'disconnected' | 'connecting' | 'player'
 
-type View = 'home' | 'search' | 'playlist-builder' | 'playlists'
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-const API_BASE = (window as any).CHATBRIDGE_API_URL || 'http://localhost:3001'
+// ── API helper ─────────────────────────────────────────────────────────────
 
 async function apiFetch(path: string, init?: RequestInit) {
-  const token = (window as any).CHATBRIDGE_TOKEN || ''
-  const res = await fetch(`${API_BASE}${path}`, {
+  const base = getApiUrl()
+  const token = getToken()
+  const res = await fetch(`${base}${path}`, {
     ...init,
-    headers: { ...init?.headers, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
   })
   if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`)
   return res.json()
 }
 
-function formatDuration(ms?: number) {
-  if (!ms) return ''
-  const s = Math.floor(ms / 1000)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-}
+// ── Constants ──────────────────────────────────────────────────────────────
 
-// ── App ────────────────────────────────────────────────────────────────────
+const GREEN = '#1db954'
+const BG = '#0a0a0a'
+const SURFACE = '#181818'
+const SURFACE2 = '#282828'
+const DIM = '#b3b3b3'
+
+// ── Component ──────────────────────────────────────────────────────────────
 
 export default function App() {
+  // ── Display state (drives re-renders) ────────────────────────────────────
+  const [view, setView] = useState<AppView>('disconnected')
   const [connected, setConnected] = useState(false)
-  const [checking, setChecking] = useState(true)
-  const [view, setView] = useState<View>('home')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Track[]>([])
-  const [searching, setSearching] = useState(false)
-  const [playlist, setPlaylist] = useState<Track[]>([])
-  const [playlistName, setPlaylistName] = useState('')
-  const [playlists, setPlaylists] = useState<Playlist[]>([])
-  const [saving, setSaving] = useState(false)
-  const [savedPlaylist, setSavedPlaylist] = useState<{ name: string; url?: string } | null>(null)
-  const [isMock, setIsMock] = useState(false)
-  const searchInputRef = useRef<HTMLInputElement>(null)
+  const [isPremium, setIsPremium] = useState(false)
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [progress, setProgress] = useState(0)     // 0–1
+  const [duration, setDuration] = useState(0)     // ms
+  const [volume, setVolume] = useState(80)
+  const [queue, setQueue] = useState<Track[]>([])
+  const [statusMsg, setStatusMsg] = useState<string | null>(null)
+  const [needsUnlock, setNeedsUnlock] = useState(false)
+  const [showQueue, setShowQueue] = useState(false)
 
-  // ── Check connection ──────────────────────────────────────────────────
+  // ── Mutable refs (stable across renders, read in callbacks) ───────────────
+  const playerRef = useRef<SpotifyPlayer | null>(null)
+  const deviceIdRef = useRef<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const queueRef = useRef<Track[]>([])
+  const volumeRef = useRef(80)
+  const pendingPlayRef = useRef<Track | null>(null)  // track waiting for audio unlock
 
-  const checkConnection = useCallback(async () => {
-    try {
-      const data = await apiFetch('/api/oauth/spotify/status')
-      setConnected(data.connected || data.mock || true)
-    } catch {
-      // If API not reachable, show as connected with mock data
-      setConnected(true)
-      setIsMock(true)
-    } finally {
-      setChecking(false)
+  // Keep queueRef in sync with queue state
+  useEffect(() => { queueRef.current = queue }, [queue])
+  useEffect(() => { volumeRef.current = volume }, [volume])
+
+  // ── Progress timer (for preview mode) ────────────────────────────────────
+
+  const clearProgressTimer = useCallback(() => {
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current)
+      progressTimerRef.current = null
     }
   }, [])
 
-  useEffect(() => {
-    checkConnection()
-  }, [checkConnection])
+  const startProgressTimer = useCallback(() => {
+    clearProgressTimer()
+    progressTimerRef.current = setInterval(() => {
+      const audio = audioRef.current
+      if (!audio) return
+      const dur = audio.duration || 30
+      setProgress(audio.currentTime / dur)
+      setDuration(dur * 1000)
+      if (audio.ended) clearProgressTimer()
+    }, 400)
+  }, [clearProgressTimer])
 
-  // ── OAuth connect ──────────────────────────────────────────────────────
+  // ── Audio auto-advance ────────────────────────────────────────────────────
+
+  const advanceQueue = useCallback(() => {
+    const q = queueRef.current
+    if (q.length === 0) {
+      setIsPlaying(false)
+      clearProgressTimer()
+      return
+    }
+    const [next, ...rest] = q
+    queueRef.current = rest
+    setQueue(rest)
+
+    const audio = audioRef.current
+    if (audio && next.previewUrl) {
+      audio.src = next.previewUrl
+      audio.currentTime = 0
+      audio.play().catch(() => {})
+      setCurrentTrack(next)
+      setIsPlaying(true)
+      setProgress(0)
+      startProgressTimer()
+    }
+  }, [clearProgressTimer, startProgressTimer])
+
+  // ── Playback core: try SDK then preview ───────────────────────────────────
+
+  const playTrackDirect = useCallback(async (track: Track): Promise<'sdk' | 'preview' | 'error'> => {
+    // Try Spotify Web Playback SDK (Premium)
+    if (deviceIdRef.current) {
+      try {
+        const tokenData = await apiFetch('/api/oauth/spotify/token')
+        if (tokenData.token && tokenData.token !== 'mock-spotify-token') {
+          const resp = await fetch(
+            `https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`,
+            {
+              method: 'PUT',
+              headers: {
+                Authorization: `Bearer ${tokenData.token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ uris: [track.uri] }),
+            },
+          )
+          if (resp.ok || resp.status === 204) {
+            setCurrentTrack(track)
+            setIsPlaying(true)
+            setProgress(0)
+            return 'sdk'
+          }
+        }
+      } catch {
+        // Fall through to preview
+      }
+    }
+
+    // Fallback: 30-second preview
+    if (!track.previewUrl) return 'error'
+
+    if (!audioRef.current) {
+      const audio = new Audio()
+      audio.volume = volumeRef.current / 100
+      audio.addEventListener('ended', advanceQueue)
+      audioRef.current = audio
+    }
+
+    audioRef.current.src = track.previewUrl
+    audioRef.current.currentTime = 0
+
+    try {
+      await audioRef.current.play()
+      setCurrentTrack(track)
+      setIsPlaying(true)
+      setProgress(0)
+      startProgressTimer()
+      return 'preview'
+    } catch (e: unknown) {
+      // NotAllowedError — browser requires user gesture first
+      if ((e as Error)?.name === 'NotAllowedError') {
+        pendingPlayRef.current = track
+        setNeedsUnlock(true)
+        setCurrentTrack(track)
+        return 'error'
+      }
+      return 'error'
+    }
+  }, [advanceQueue, startProgressTimer])
+
+  // ── SDK initialization ────────────────────────────────────────────────────
+
+  const initSpotifySdk = useCallback(async () => {
+    let spotifyToken: string | null = null
+    try {
+      const data = await apiFetch('/api/oauth/spotify/token')
+      spotifyToken = data.token
+      if (!spotifyToken || spotifyToken === 'mock-spotify-token') return
+    } catch {
+      return // not connected to Spotify yet
+    }
+
+    const createPlayer = () => {
+      if (playerRef.current) {
+        playerRef.current.disconnect()
+        playerRef.current = null
+        deviceIdRef.current = null
+      }
+
+      const player = new window.Spotify.Player({
+        name: 'ChatBridge Player',
+        getOAuthToken: async (cb) => {
+          try {
+            const d = await apiFetch('/api/oauth/spotify/token')
+            cb(d.token)
+          } catch {
+            cb(spotifyToken!)
+          }
+        },
+        volume: volumeRef.current / 100,
+      })
+
+      player.addListener('ready', ({ device_id }: { device_id: string }) => {
+        deviceIdRef.current = device_id
+        setIsPremium(true)
+        setStatusMsg(null)
+      })
+
+      player.addListener('not_ready', () => {
+        deviceIdRef.current = null
+      })
+
+      player.addListener('account_error', () => {
+        setIsPremium(false)
+        setStatusMsg('Spotify Premium required for full tracks — using 30-second previews')
+      })
+
+      player.addListener('authentication_error', () => {
+        setIsPremium(false)
+        setStatusMsg('Spotify auth error — please reconnect')
+      })
+
+      player.addListener('player_state_changed', (state: SpotifyPlaybackState | null) => {
+        if (!state) return
+        const t = state.track_window.current_track
+        setCurrentTrack({
+          id: t.id,
+          name: t.name,
+          artist: t.artists.map(a => a.name).join(', '),
+          album: t.album.name,
+          albumArt: t.album.images[0]?.url ?? '',
+          previewUrl: null,
+          uri: t.uri,
+        })
+        setIsPlaying(!state.paused)
+        if (state.duration > 0) {
+          setProgress(state.position / state.duration)
+          setDuration(state.duration)
+        }
+      })
+
+      player.connect()
+      playerRef.current = player
+    }
+
+    if (window.Spotify) {
+      createPlayer()
+    } else {
+      window.onSpotifyWebPlaybackSDKReady = createPlayer
+      if (!document.getElementById('spotify-sdk-script')) {
+        const script = document.createElement('script')
+        script.id = 'spotify-sdk-script'
+        script.src = 'https://sdk.scdn.co/spotify-player.js'
+        document.head.appendChild(script)
+      }
+    }
+  }, [])
+
+  // ── Connection check ──────────────────────────────────────────────────────
+
+  const checkConnection = useCallback(async (): Promise<boolean> => {
+    try {
+      const data = await apiFetch('/api/oauth/spotify/status')
+      const isConnected = !!(data.connected && !data.expired)
+      setConnected(isConnected)
+      if (isConnected) setView('player')
+      return isConnected
+    } catch {
+      setConnected(false)
+      return false
+    }
+  }, [])
+
+  // ── On mount: check connection, then init SDK if already connected ─────────
+
+  useEffect(() => {
+    // Delay slightly so the auth_token postMessage arrives first
+    const timer = setTimeout(async () => {
+      const isConnected = await checkConnection()
+      if (isConnected) initSpotifySdk()
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [checkConnection, initSpotifySdk])
+
+  // ── Cleanup ───────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      playerRef.current?.disconnect()
+      audioRef.current?.pause()
+      clearProgressTimer()
+    }
+  }, [clearProgressTimer])
+
+  // ── OAuth connect ─────────────────────────────────────────────────────────
 
   const handleConnect = useCallback(async () => {
+    setView('connecting')
     try {
       const data = await apiFetch('/api/oauth/spotify/authorize')
       const popup = window.open(data.authUrl, 'spotify-auth', 'width=500,height=700')
-      const timer = setInterval(() => {
+      const timer = setInterval(async () => {
         if (popup?.closed) {
           clearInterval(timer)
-          checkConnection()
+          const ok = await checkConnection()
+          if (ok) initSpotifySdk()
         }
       }, 1000)
     } catch {
-      // In dev without credentials, just enable mock mode
+      // No Spotify credentials configured — mock mode
       setConnected(true)
-      setIsMock(true)
+      setView('player')
+      setStatusMsg('Running in demo mode — Spotify not configured')
     }
-  }, [checkConnection])
+  }, [checkConnection, initSpotifySdk])
 
-  // ── Tool handlers ──────────────────────────────────────────────────────
+  // ── Tool handlers (all empty deps — read state from refs/getters) ─────────
 
-  const handleSearchTracks = useCallback(async (params: Record<string, unknown>) => {
-    const q = String(params.query || '')
-    const limit = Number(params.limit) || 10
+  const handlePlayTrack = useCallback(async (params: Record<string, unknown>) => {
+    const query = String(params.query || '')
+    if (!query) return { success: false, error: 'query is required' }
 
-    setView('search')
-    setSearchQuery(q)
-    setSearching(true)
+    setStatusMsg(`Searching for "${query}"…`)
 
+    let data: { tracks: Track[]; mock?: boolean }
     try {
-      const data = await apiFetch(`/api/oauth/spotify/search?q=${encodeURIComponent(q)}&limit=${limit}`)
-      setSearchResults(data.tracks || [])
-      if (data.mock) setIsMock(true)
-      setSearching(false)
-      sendStateUpdate({ view: 'search', query: q, resultCount: (data.tracks || []).length })
-      return { tracks: data.tracks || [], query: q, resultCount: (data.tracks || []).length }
-    } catch (err) {
-      setSearching(false)
-      return { error: 'Search failed', tracks: [] }
-    }
-  }, [])
-
-  const handleCreatePlaylist = useCallback(async (params: Record<string, unknown>) => {
-    const name = String(params.name || 'My Playlist')
-    const description = String(params.description || '')
-    setPlaylistName(name)
-    setView('playlist-builder')
-    setSaving(true)
-
-    try {
-      const trackIds = playlist.map(t => t.id)
-      const data = await apiFetch('/api/oauth/spotify/playlist', {
-        method: 'POST',
-        body: JSON.stringify({ name, description, trackIds }),
-      })
-      if (data.mock) setIsMock(true)
-      setSaving(false)
-      setSavedPlaylist({ name: data.name, url: data.url })
-      sendStateUpdate({ playlistCreated: true, name: data.name, trackCount: data.trackCount })
-      sendCompletion(`Playlist "${data.name}" created with ${data.trackCount} tracks`, data)
-      return { playlistId: data.playlistId, name: data.name, url: data.url, trackCount: data.trackCount }
-    } catch (err) {
-      setSaving(false)
-      return { error: 'Failed to create playlist' }
-    }
-  }, [playlist])
-
-  const handleAddToPlaylist = useCallback(async (params: Record<string, unknown>) => {
-    const trackId = String(params.trackId || '')
-    const track = searchResults.find(t => t.id === trackId) || {
-      id: trackId, name: params.trackName as string || 'Unknown', artist: params.artist as string || 'Unknown', album: '',
-    }
-    setPlaylist(prev => prev.find(t => t.id === trackId) ? prev : [...prev, track])
-    setView('playlist-builder')
-    sendStateUpdate({ playlistSize: playlist.length + 1 })
-    return { success: true, trackAdded: track.name, playlistSize: playlist.length + 1 }
-  }, [searchResults, playlist])
-
-  const handleGetUserPlaylists = useCallback(async (_params: Record<string, unknown>) => {
-    try {
-      const data = await apiFetch('/api/oauth/spotify/playlists')
-      setPlaylists(data.playlists || [])
-      setView('playlists')
-      if (data.mock) setIsMock(true)
-      return { playlists: data.playlists || [] }
+      data = await apiFetch(`/api/oauth/spotify/search?q=${encodeURIComponent(query)}&limit=5`)
     } catch {
-      return { playlists: [], error: 'Could not load playlists' }
+      setStatusMsg(null)
+      return { success: false, error: 'Search failed' }
     }
+
+    const tracks = (data.tracks || []) as Track[]
+    if (tracks.length === 0) {
+      setStatusMsg(`No results for "${query}"`)
+      return { success: false, error: 'No tracks found' }
+    }
+
+    const track = tracks[0]
+    setStatusMsg(null)
+
+    // Stop whatever is playing
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      clearProgressTimer()
+    }
+
+    const mode = await playTrackDirect(track)
+    if (mode === 'error' && !pendingPlayRef.current) {
+      return { success: false, error: 'No preview available — connect Spotify Premium for full playback' }
+    }
+
+    sendStateUpdate({ playing: track.name, artist: track.artist, mode })
+    return {
+      success: mode !== 'error',
+      track: track.name,
+      artist: track.artist,
+      album: track.album,
+      mode,
+      message: mode === 'sdk'
+        ? `Now playing: ${track.name} by ${track.artist}`
+        : mode === 'preview'
+          ? `Playing 30-second preview: ${track.name} by ${track.artist}`
+          : 'Track found but needs audio permission — tap the player to start',
+    }
+  }, [clearProgressTimer, playTrackDirect])
+
+  const handlePause = useCallback(async (_params?: Record<string, unknown>) => {
+    playerRef.current?.pause().catch(() => {})
+    if (audioRef.current) {
+      audioRef.current.pause()
+      clearProgressTimer()
+    }
+    setIsPlaying(false)
+    return { success: true }
+  }, [clearProgressTimer])
+
+  const handleResume = useCallback(async (_params?: Record<string, unknown>) => {
+    if (playerRef.current) {
+      await playerRef.current.resume().catch(() => {})
+    } else if (audioRef.current?.src) {
+      await audioRef.current.play().catch(() => {})
+      startProgressTimer()
+    }
+    setIsPlaying(true)
+    return { success: true }
+  }, [startProgressTimer])
+
+  const handleSetVolume = useCallback(async (params: Record<string, unknown>) => {
+    const level = Math.max(0, Math.min(100, Number(params.level) || 0))
+    volumeRef.current = level
+    setVolume(level)
+    playerRef.current?.setVolume(level / 100).catch(() => {})
+    if (audioRef.current) audioRef.current.volume = level / 100
+    return { success: true, level }
   }, [])
 
-  // Register tools
+  const handleSkipNext = useCallback(async (_params?: Record<string, unknown>) => {
+    if (playerRef.current && deviceIdRef.current) {
+      await playerRef.current.nextTrack().catch(() => {})
+      return { success: true, track: 'skipped via SDK' }
+    }
+    if (queueRef.current.length === 0) return { success: false, error: 'Queue is empty' }
+    advanceQueue()
+    return { success: true, track: queueRef.current[0]?.name ?? 'next track' }
+  }, [advanceQueue])
+
+  const handleQueueTrack = useCallback(async (params: Record<string, unknown>) => {
+    const query = String(params.query || '')
+    if (!query) return { success: false, error: 'query is required' }
+
+    let data: { tracks: Track[] }
+    try {
+      data = await apiFetch(`/api/oauth/spotify/search?q=${encodeURIComponent(query)}&limit=3`)
+    } catch {
+      return { success: false, error: 'Search failed' }
+    }
+
+    if (!data.tracks?.length) return { success: false, error: 'No results' }
+    const track = data.tracks[0]
+    const newQueue = [...queueRef.current, track]
+    queueRef.current = newQueue
+    setQueue(newQueue)
+    return { success: true, track: track.name, artist: track.artist, queueLength: newQueue.length }
+  }, [])
+
+  // Register tools once (all handlers have empty deps → stable references)
   useEffect(() => {
-    registerTool('search_tracks', handleSearchTracks)
-    registerTool('create_playlist', handleCreatePlaylist)
-    registerTool('add_to_playlist', handleAddToPlaylist)
-    registerTool('get_user_playlists', handleGetUserPlaylists)
+    registerTool('play_track', handlePlayTrack)
+    registerTool('pause_playback', handlePause)
+    registerTool('resume_playback', handleResume)
+    registerTool('set_volume', handleSetVolume)
+    registerTool('skip_to_next', handleSkipNext)
+    registerTool('queue_track', handleQueueTrack)
     initBridge()
-  }, [handleSearchTracks, handleCreatePlaylist, handleAddToPlaylist, handleGetUserPlaylists])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  // ── Manual controls ───────────────────────────────────────────────────────
 
-  if (checking) {
-    return (
-      <div style={{ ...styles.container, justifyContent: 'center', alignItems: 'center' }}>
-        <div style={styles.spinner} />
-      </div>
-    )
+  async function togglePlay() {
+    if (isPlaying) await handlePause({})
+    else await handleResume({})
   }
 
-  return (
-    <div style={styles.container}>
-      {/* Header */}
-      <header style={styles.header}>
-        <span style={{ fontSize: 20 }}>🎵</span>
-        <span style={styles.headerTitle}>Spotify Playlist Creator</span>
-        {isMock && <span style={styles.mockBadge}>mock mode</span>}
-        <div style={styles.headerRight}>
-          {connected ? (
-            <div style={styles.connectedDot} title="Connected to Spotify" />
-          ) : (
-            <button style={styles.connectBtn} onClick={handleConnect}>Connect Spotify</button>
-          )}
-        </div>
-      </header>
+  async function unlockAudio() {
+    setNeedsUnlock(false)
+    const track = pendingPlayRef.current
+    pendingPlayRef.current = null
+    if (track?.previewUrl && audioRef.current) {
+      audioRef.current.src = track.previewUrl
+      await audioRef.current.play().catch(() => {})
+      setIsPlaying(true)
+      startProgressTimer()
+    }
+  }
 
-      {/* Nav */}
-      {connected && (
-        <nav style={styles.nav}>
-          {(['home', 'search', 'playlist-builder', 'playlists'] as View[]).map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              style={{ ...styles.navBtn, ...(view === v ? styles.navBtnActive : {}) }}
-            >
-              {v === 'home' ? '🏠' : v === 'search' ? '🔍 Search' : v === 'playlist-builder' ? `📋 Builder${playlist.length > 0 ? ` (${playlist.length})` : ''}` : '📚 Playlists'}
-            </button>
-          ))}
-        </nav>
-      )}
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  function fmt(ms: number) {
+    const s = Math.floor(ms / 1000)
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  }
+
+  const elapsed = duration * progress
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: BG, color: '#fff', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', overflow: 'hidden' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: '#000', borderBottom: '1px solid #1a1a1a', flexShrink: 0 }}>
+        <span style={{ color: GREEN, fontSize: 16, fontWeight: 700 }}>♫</span>
+        <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Spotify Player</span>
+        {isPremium && <span style={badge('#143d22', '#1db954')}>Premium ✓</span>}
+        {connected && !isPremium && <span style={badge('#1a1a1a', DIM)}>Previews</span>}
+        {connected ? (
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: GREEN }} title="Connected" />
+        ) : (
+          <button onClick={handleConnect} style={smallBtn}>Connect</button>
+        )}
+      </div>
 
       {/* Body */}
-      <div style={styles.body}>
-        {!connected && (
-          <div style={styles.centered}>
-            <div style={{ fontSize: 64 }}>🎧</div>
-            <h2 style={styles.h2}>Connect Your Spotify</h2>
-            <p style={{ color: '#9ca3af', textAlign: 'center', lineHeight: 1.6 }}>
-              Link your Spotify account to search for tracks<br />and create playlists with the AI assistant.
-            </p>
-            <button style={styles.bigConnectBtn} onClick={handleConnect}>Connect Spotify</button>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 20, overflow: 'hidden' }}>
+
+        {view === 'disconnected' && (
+          <div style={{ textAlign: 'center', maxWidth: 300 }}>
+            <div style={{ fontSize: 60, marginBottom: 16 }}>🎧</div>
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8 }}>Connect Your Spotify</div>
+            <div style={{ color: DIM, fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>
+              Then tell the AI what to play:<br />
+              <em style={{ color: '#fff' }}>"Play Smells Like Teen Spirit"</em><br />
+              <em style={{ color: '#fff' }}>"Queue some Radiohead"</em>
+            </div>
+            <button onClick={handleConnect} style={bigBtn}>Connect Spotify</button>
           </div>
         )}
 
-        {connected && view === 'home' && (
-          <div style={styles.centered}>
-            <div style={{ fontSize: 56 }}>🎵</div>
-            <h2 style={styles.h2}>Ready to create music!</h2>
-            <p style={{ color: '#9ca3af', textAlign: 'center', lineHeight: 1.6 }}>
-              Ask the AI to search for tracks or create a playlist.<br />
-              You can also browse manually using the tabs above.
-            </p>
-            <div style={styles.hints}>
-              <div style={styles.hint}>"Search for Taylor Swift songs"</div>
-              <div style={styles.hint}>"Create a workout playlist"</div>
-              <div style={styles.hint}>"Show my playlists"</div>
+        {view === 'connecting' && (
+          <div style={{ textAlign: 'center', color: DIM }}>
+            <div style={spinner} />
+            <div style={{ marginTop: 16 }}>Connecting to Spotify…</div>
+          </div>
+        )}
+
+        {view === 'player' && !currentTrack && (
+          <div style={{ textAlign: 'center', maxWidth: 300 }}>
+            <div style={{ fontSize: 56, marginBottom: 12 }}>🎵</div>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Ready to play</div>
+            <div style={{ color: DIM, fontSize: 13, lineHeight: 1.7 }}>
+              Ask the AI to play something:<br />
+              <em style={{ color: '#ccc' }}>"Play Bohemian Rhapsody"</em><br />
+              <em style={{ color: '#ccc' }}>"Put on some lo-fi beats"</em><br />
+              <em style={{ color: '#ccc' }}>"Queue Nirvana"</em>
             </div>
           </div>
         )}
 
-        {connected && view === 'search' && (
-          <div style={styles.searchView}>
-            <div style={styles.searchBar}>
-              <input
-                ref={searchInputRef}
-                style={styles.searchInput}
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSearchTracks({ query: searchQuery })}
-                placeholder="Search tracks, artists, albums..."
-              />
-              <button style={styles.searchBtn} onClick={() => handleSearchTracks({ query: searchQuery })}>
-                Search
-              </button>
+        {view === 'player' && currentTrack && (
+          <>
+            {/* Album art */}
+            <div style={{ width: 196, height: 196, borderRadius: 8, overflow: 'hidden', background: SURFACE2, flexShrink: 0, boxShadow: '0 8px 48px rgba(0,0,0,0.7)' }}>
+              {currentTrack.albumArt ? (
+                <img src={currentTrack.albumArt} alt={currentTrack.album} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48 }}>🎵</div>
+              )}
             </div>
 
-            {searching && <div style={styles.loading}>Searching...</div>}
+            {/* Track info */}
+            <div style={{ width: '100%', maxWidth: 280, textAlign: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentTrack.name}</div>
+              <div style={{ color: DIM, fontSize: 13 }}>{currentTrack.artist}</div>
+              <div style={{ color: '#6b7280', fontSize: 11, marginTop: 2 }}>{currentTrack.album}</div>
+            </div>
 
-            {searchResults.length > 0 && !searching && (
-              <div style={styles.trackList}>
-                {searchResults.map(track => (
-                  <div key={track.id} style={styles.trackRow}>
-                    <div style={styles.trackInfo}>
-                      <div style={styles.trackName}>{track.name}</div>
-                      <div style={styles.trackMeta}>{track.artist} · {track.album}</div>
-                    </div>
-                    <div style={styles.trackActions}>
-                      {formatDuration(track.durationMs) && (
-                        <span style={styles.duration}>{formatDuration(track.durationMs)}</span>
-                      )}
-                      <button
-                        style={{
-                          ...styles.addBtn,
-                          ...(playlist.find(t => t.id === track.id) ? styles.addBtnAdded : {}),
-                        }}
-                        onClick={() => handleAddToPlaylist({ trackId: track.id })}
-                      >
-                        {playlist.find(t => t.id === track.id) ? '✓' : '+'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {searchResults.length === 0 && !searching && searchQuery && (
-              <div style={styles.empty}>No results for "{searchQuery}"</div>
-            )}
-          </div>
-        )}
-
-        {connected && view === 'playlist-builder' && (
-          <div style={styles.builderView}>
-            <div style={styles.playlistHeader}>
-              <input
-                style={styles.playlistNameInput}
-                value={playlistName}
-                onChange={e => setPlaylistName(e.target.value)}
-                placeholder="Playlist name..."
-              />
-              <button
-                style={styles.saveBtn}
-                onClick={() => handleCreatePlaylist({ name: playlistName || 'My Playlist', description: '' })}
-                disabled={saving || playlist.length === 0}
+            {/* Progress bar */}
+            <div style={{ width: '100%', maxWidth: 280 }}>
+              <div
+                onClick={(e) => {
+                  if (!audioRef.current?.src) return
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const ratio = (e.clientX - rect.left) / rect.width
+                  if (audioRef.current) {
+                    audioRef.current.currentTime = ratio * (audioRef.current.duration || 30)
+                    setProgress(ratio)
+                  }
+                }}
+                style={{ height: 4, background: SURFACE2, borderRadius: 2, cursor: 'pointer', position: 'relative', marginBottom: 4 }}
               >
-                {saving ? 'Saving...' : 'Save to Spotify'}
+                <div style={{ height: '100%', borderRadius: 2, background: GREEN, width: `${progress * 100}%`, transition: 'width 0.4s linear' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6b7280' }}>
+                <span>{fmt(elapsed)}</span>
+                <span>{fmt(duration || 0)}</span>
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+              <button onClick={() => setShowQueue(v => !v)} style={ctrlBtn('#3a3a3a')} title="Queue">
+                ☰
+              </button>
+              <button
+                onClick={togglePlay}
+                style={{ ...ctrlBtn(GREEN), width: 52, height: 52, borderRadius: '50%', fontSize: 22, color: '#000' }}
+              >
+                {isPlaying ? '⏸' : '▶'}
+              </button>
+              <button onClick={() => handleSkipNext({})} style={ctrlBtn('#3a3a3a')} title="Skip">
+                ⏭
               </button>
             </div>
 
-            {savedPlaylist && (
-              <div style={styles.successBanner}>
-                ✓ "{savedPlaylist.name}" saved!{' '}
-                {savedPlaylist.url && <a href={savedPlaylist.url} target="_blank" rel="noreferrer" style={{ color: '#1db954' }}>Open in Spotify</a>}
-              </div>
-            )}
+            {/* Volume */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 280 }}>
+              <span style={{ fontSize: 12, color: DIM }}>🔈</span>
+              <input
+                type="range" min={0} max={100} value={volume}
+                onChange={e => handleSetVolume({ level: Number(e.target.value) })}
+                style={{ flex: 1, accentColor: GREEN, cursor: 'pointer', height: 4 }}
+              />
+              <span style={{ fontSize: 12, color: DIM }}>🔊</span>
+            </div>
 
-            {playlist.length === 0 ? (
-              <div style={styles.empty}>No tracks yet. Search and add tracks to your playlist.</div>
-            ) : (
-              <div style={styles.trackList}>
-                {playlist.map((track, i) => (
-                  <div key={track.id} style={styles.trackRow}>
-                    <span style={styles.trackNum}>{i + 1}</span>
-                    <div style={styles.trackInfo}>
-                      <div style={styles.trackName}>{track.name}</div>
-                      <div style={styles.trackMeta}>{track.artist}</div>
-                    </div>
-                    <button
-                      style={styles.removeBtn}
-                      onClick={() => setPlaylist(prev => prev.filter(t => t.id !== track.id))}
-                    >✕</button>
-                  </div>
-                ))}
-              </div>
+            {/* Audio unlock overlay */}
+            {needsUnlock && (
+              <button onClick={unlockAudio} style={{ ...bigBtn, fontSize: 14, padding: '10px 24px' }}>
+                ▶ Tap to play preview
+              </button>
             )}
-          </div>
+          </>
         )}
 
-        {connected && view === 'playlists' && (
-          <div style={styles.playlistsView}>
-            <button style={styles.refreshBtn} onClick={() => handleGetUserPlaylists({})}>Refresh</button>
-            {playlists.length === 0 ? (
-              <div style={styles.empty}>No playlists found. Ask the AI to show your playlists.</div>
-            ) : (
-              <div style={styles.playlistGrid}>
-                {playlists.map(p => (
-                  <a key={p.id} href={p.url || '#'} target="_blank" rel="noreferrer" style={styles.playlistCard}>
-                    <div style={styles.playlistEmoji}>🎶</div>
-                    <div style={styles.playlistCardName}>{p.name}</div>
-                    <div style={styles.playlistCardCount}>{p.trackCount} tracks</div>
-                  </a>
-                ))}
-              </div>
-            )}
+        {/* Status message */}
+        {statusMsg && (
+          <div style={{ color: DIM, fontSize: 12, textAlign: 'center', padding: '8px 14px', background: SURFACE, borderRadius: 8, maxWidth: 280 }}>
+            {statusMsg}
           </div>
         )}
       </div>
+
+      {/* Queue panel */}
+      {showQueue && (
+        <div style={{ background: SURFACE, borderTop: '1px solid #2a2a2a', flexShrink: 0 }}>
+          <div style={{ padding: '8px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 11, color: DIM, fontWeight: 600, letterSpacing: 1 }}>QUEUE ({queue.length})</span>
+            <button onClick={() => setShowQueue(false)} style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 16 }}>×</button>
+          </div>
+          {queue.length === 0 ? (
+            <div style={{ padding: '8px 16px 12px', color: '#555', fontSize: 12 }}>Queue is empty</div>
+          ) : (
+            <div style={{ maxHeight: 160, overflowY: 'auto' }}>
+              {queue.map((t, i) => (
+                <div key={`${t.id}-${i}`} style={{ display: 'flex', gap: 10, padding: '6px 16px', alignItems: 'center', borderTop: '1px solid #2a2a2a' }}>
+                  <span style={{ fontSize: 11, color: '#555', width: 16, textAlign: 'right' }}>{i + 1}</span>
+                  {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
+                    <div style={{ fontSize: 11, color: DIM }}>{t.artist}</div>
+                  </div>
+                  <button
+                    onClick={() => { const nq = queue.filter((_, idx) => idx !== i); queueRef.current = nq; setQueue(nq) }}
+                    style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: 14, padding: '2px 4px' }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────
+// ── Style helpers ──────────────────────────────────────────────────────────
 
-const styles: Record<string, React.CSSProperties> = {
-  container: { height: '100vh', display: 'flex', flexDirection: 'column', background: '#0a0a0a', color: '#fff', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
-  header: { display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', background: '#111', borderBottom: '1px solid #1db954' },
-  headerTitle: { flex: 1, fontWeight: 700, fontSize: 14 },
-  mockBadge: { background: '#374151', color: '#9ca3af', fontSize: 11, padding: '2px 8px', borderRadius: 10 },
-  headerRight: { display: 'flex', alignItems: 'center' },
-  connectedDot: { width: 8, height: 8, borderRadius: '50%', background: '#1db954' },
-  connectBtn: { background: '#1db954', color: '#000', border: 'none', borderRadius: 20, padding: '4px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 12 },
-  nav: { display: 'flex', gap: 0, background: '#111', borderBottom: '1px solid #1f1f1f' },
-  navBtn: { padding: '8px 14px', background: 'transparent', color: '#9ca3af', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500 },
-  navBtnActive: { color: '#1db954', borderBottom: '2px solid #1db954' },
-  body: { flex: 1, overflowY: 'auto' },
-  centered: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32, minHeight: '70vh' },
-  h2: { fontSize: 22, fontWeight: 700, color: '#fff' },
-  hints: { display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 320 },
-  hint: { background: '#1a1a1a', color: '#9ca3af', padding: '8px 14px', borderRadius: 8, fontSize: 13, fontStyle: 'italic' },
-  bigConnectBtn: { background: '#1db954', color: '#000', border: 'none', borderRadius: 24, padding: '12px 32px', fontWeight: 700, cursor: 'pointer', fontSize: 16 },
-  searchView: { padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
-  searchBar: { display: 'flex', gap: 8 },
-  searchInput: { flex: 1, padding: '10px 14px', borderRadius: 10, border: '1px solid #1f1f1f', background: '#1a1a1a', color: '#fff', fontSize: 14, outline: 'none' },
-  searchBtn: { padding: '10px 20px', background: '#1db954', color: '#000', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' },
-  loading: { textAlign: 'center', color: '#9ca3af', padding: 20 },
-  trackList: { display: 'flex', flexDirection: 'column', gap: 2 },
-  trackRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 8, background: '#1a1a1a' },
-  trackNum: { color: '#6b7280', fontSize: 13, width: 20, textAlign: 'right' },
-  trackInfo: { flex: 1, minWidth: 0 },
-  trackName: { fontWeight: 500, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  trackMeta: { fontSize: 12, color: '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  trackActions: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
-  duration: { fontSize: 12, color: '#6b7280' },
-  addBtn: { width: 28, height: 28, borderRadius: '50%', border: '1px solid #1db954', background: 'transparent', color: '#1db954', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  addBtnAdded: { background: '#1db954', color: '#000' },
-  empty: { textAlign: 'center', color: '#6b7280', padding: 40, fontSize: 14 },
-  builderView: { padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
-  playlistHeader: { display: 'flex', gap: 8 },
-  playlistNameInput: { flex: 1, padding: '10px 14px', borderRadius: 10, border: '1px solid #1f1f1f', background: '#1a1a1a', color: '#fff', fontSize: 14, outline: 'none' },
-  saveBtn: { padding: '10px 20px', background: '#1db954', color: '#000', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer', fontSize: 13 },
-  successBanner: { background: '#14532d', color: '#4ade80', padding: '10px 16px', borderRadius: 8, fontSize: 13 },
-  removeBtn: { color: '#6b7280', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 16, padding: 4 },
-  playlistsView: { padding: 16 },
-  refreshBtn: { background: '#1a1a1a', color: '#9ca3af', border: '1px solid #374151', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 12, marginBottom: 12 },
-  playlistGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
-  playlistCard: { background: '#1a1a1a', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 6, textDecoration: 'none', color: '#fff' },
-  playlistEmoji: { fontSize: 32 },
-  playlistCardName: { fontWeight: 600, fontSize: 14 },
-  playlistCardCount: { fontSize: 12, color: '#9ca3af' },
-  spinner: { width: 40, height: 40, borderRadius: '50%', border: '3px solid #1f1f1f', borderTopColor: '#1db954', animation: 'spin 0.8s linear infinite' },
+const spinner: React.CSSProperties = {
+  width: 36, height: 36, borderRadius: '50%',
+  border: '3px solid #1f1f1f', borderTopColor: '#1db954',
+  animation: 'spin 0.8s linear infinite', margin: '0 auto',
+}
+
+function badge(bg: string, color: string): React.CSSProperties {
+  return { background: bg, color, fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600 }
+}
+
+const smallBtn: React.CSSProperties = {
+  background: '#1db954', color: '#000', border: 'none', borderRadius: 20,
+  padding: '4px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 11,
+}
+
+const bigBtn: React.CSSProperties = {
+  background: '#1db954', color: '#000', border: 'none', borderRadius: 24,
+  padding: '12px 36px', fontWeight: 700, cursor: 'pointer', fontSize: 16,
+}
+
+function ctrlBtn(bg: string): React.CSSProperties {
+  return {
+    background: bg, border: 'none', color: '#fff', cursor: 'pointer',
+    width: 40, height: 40, borderRadius: '50%', fontSize: 16,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  }
 }
