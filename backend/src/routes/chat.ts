@@ -1,4 +1,4 @@
-import { generateText, streamText, tool } from 'ai'
+import { generateText, tool } from 'ai'
 import { Router, type Response } from 'express'
 import { z } from 'zod'
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth'
@@ -198,17 +198,19 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
       }
     }
 
-    // ── Stream AI response ───────────────────────────────────
-    let assistantContent = ''
-    console.log('[chat] starting streamText call to OpenAI, model:', DEFAULT_MODEL)
+    // ── Generate AI response ─────────────────────────────────
+    // Note: Using generateText (not streamText) — Railway's network proxy
+    // buffers chunked/SSE responses from OpenAI, causing streamText to hang.
+    // We collect the full response then emit delta + done events.
+    console.log('[chat] calling generateText, model:', DEFAULT_MODEL)
 
-    const streamController = new AbortController()
-    const streamTimer = setTimeout(() => {
-      console.log('[chat] streamText timed out after 60s, aborting')
-      streamController.abort()
+    const genController = new AbortController()
+    const genTimer = setTimeout(() => {
+      console.log('[chat] generateText timed out after 60s, aborting')
+      genController.abort()
     }, 60_000)
 
-    const streamResult = await streamText({
+    const genResult = await generateText({
       model: openai(DEFAULT_MODEL),
       system: SYSTEM_PROMPT + (matchedApp
         ? `\n\nThe user is working with the "${matchedApp.name}" app. Use its tools to help them.`
@@ -217,18 +219,17 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
       tools: Object.keys(tools).length > 0 ? tools : undefined,
       maxTokens: 1024,
       temperature: 0.7,
-      abortSignal: streamController.signal,
-      onChunk: ({ chunk }) => {
-        if (chunk.type === 'text-delta') {
-          assistantContent += chunk.textDelta
-          sseWrite(res, { type: 'delta', content: chunk.textDelta })
-        }
-      },
+      abortSignal: genController.signal,
     })
+    clearTimeout(genTimer)
 
-    await streamResult.text
-    clearTimeout(streamTimer)
-    console.log('[chat] streamText completed, assistant content length:', assistantContent.length)
+    const assistantContent = genResult.text || ''
+    console.log('[chat] generateText completed, content length:', assistantContent.length)
+
+    // Emit the full response as a single delta so the frontend renders it
+    if (assistantContent) {
+      sseWrite(res, { type: 'delta', content: assistantContent })
+    }
 
     // Persist assistant message
     const { data: assistantMsg } = await supabaseAdmin
