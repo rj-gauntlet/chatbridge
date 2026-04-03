@@ -467,6 +467,25 @@ router.post('/spotify/next', requireAuth, async (req: AuthenticatedRequest, res,
 })
 
 /**
+ * PUT /api/oauth/spotify/volume
+ * Set volume on the active Spotify Connect device (0-100)
+ */
+router.put('/spotify/volume', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { data: appReg } = await supabaseAdmin
+      .from('app_registrations').select('id').eq('slug', 'spotify').single()
+    if (!appReg) throw createError('Spotify app not registered', 404)
+    const token = await getSpotifyToken(req.userId!, appReg.id)
+    if (!token) throw createError('Not connected', 401)
+    const percent = Math.max(0, Math.min(100, Math.round(Number(req.body.volume_percent) || 0)))
+    await fetch(`https://api.spotify.com/v1/me/player/volume?volume_percent=${percent}`, {
+      method: 'PUT', headers: { Authorization: `Bearer ${token}` },
+    })
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+/**
  * GET /api/oauth/spotify/devices
  * List user's available Spotify Connect devices
  */

@@ -195,6 +195,7 @@ export default function App() {
   const [duration, setDuration] = useState(0)     // ms
   const [volume, setVolume] = useState(80)
   const [queue, setQueue] = useState<Track[]>([])
+  const [played, setPlayed] = useState<Track[]>([])
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
   const [needsUnlock, setNeedsUnlock] = useState(false)
   const [showQueue, setShowQueue] = useState(false)
@@ -497,6 +498,7 @@ export default function App() {
     }
     const t = playedTrack
     setLiked(false)
+    setPlayed(prev => [t, ...prev.filter(p => p.id !== t.id)].slice(0, 30))
     sendStateUpdate({ playing: t.name, artist: t.artist, mode })
     return {
       success: mode !== 'error', track: t.name, artist: t.artist, album: t.album, mode,
@@ -538,6 +540,12 @@ export default function App() {
     setVolume(level)
     playerRef.current?.setVolume(level / 100).catch(() => {})
     if (audioRef.current) audioRef.current.volume = level / 100
+    if (connectModeRef.current) {
+      apiFetch('/api/oauth/spotify/volume', {
+        method: 'PUT',
+        body: JSON.stringify({ volume_percent: level }),
+      }).catch(() => {})
+    }
     return { success: true, level }
   }, [])
 
@@ -848,35 +856,62 @@ export default function App() {
 
         {/* Queue panel */}
         {showQueue && (
-          <div style={{ background: SURFACE, borderTop: `1px solid ${SURFACE3}`, flexShrink: 0, maxHeight: 200, overflowY: 'auto' }}>
-            <div style={{ padding: '8px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: SURFACE }}>
+          <div style={{ background: SURFACE, borderTop: `1px solid ${SURFACE3}`, flexShrink: 0, maxHeight: 260, overflowY: 'auto' }}>
+            <div style={{ padding: '8px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: SURFACE, zIndex: 1 }}>
               <span style={{ fontSize: 11, color: DIM, fontWeight: 700, letterSpacing: 1.5 }}>NEXT IN QUEUE ({queue.length})</span>
               <button onClick={() => setShowQueue(false)} style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
             </div>
-            {queue.length === 0 ? (
-              <div style={{ padding: '8px 16px 14px', color: DIM2, fontSize: 13 }}>Queue is empty</div>
-            ) : (
-              queue.map((t, i) => (
-                <div key={`${t.id}-${i}`} style={{ display: 'flex', gap: 10, padding: '6px 16px', alignItems: 'center', borderTop: `1px solid ${SURFACE3}` }}>
-                  <span style={{ fontSize: 11, color: DIM2, width: 16, textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
-                  {t.albumArt && (
-                    <img
-                      src={t.albumArt}
-                      alt=""
-                      style={{ width: 36, height: 36, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
-                    <div style={{ fontSize: 11, color: DIM }}>{t.artist}</div>
-                  </div>
-                  <button
-                    onClick={() => { const nq = queue.filter((_, idx) => idx !== i); queueRef.current = nq; setQueue(nq) }}
-                    style={{ background: 'none', border: 'none', color: DIM2, cursor: 'pointer', fontSize: 16, padding: '2px 4px', flexShrink: 0 }}
-                  >✕</button>
+            {queue.length === 0 && played.length === 0 && (
+              <div style={{ padding: '8px 16px 14px', color: DIM2, fontSize: 13 }}>Nothing in queue yet</div>
+            )}
+            {queue.map((t, i) => (
+              <div
+                key={`q-${t.id}-${i}`}
+                onClick={() => playTrackDirect(t)}
+                style={{ display: 'flex', gap: 10, padding: '6px 16px', alignItems: 'center', borderTop: `1px solid ${SURFACE3}`, cursor: 'pointer' }}
+                onMouseEnter={e => (e.currentTarget.style.background = SURFACE2)}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{ fontSize: 11, color: DIM2, width: 16, textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
+                {t.albumArt && (
+                  <img src={t.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
+                  <div style={{ fontSize: 11, color: DIM }}>{t.artist}</div>
                 </div>
-              ))
+                <button
+                  onClick={e => { e.stopPropagation(); const nq = queue.filter((_, idx) => idx !== i); queueRef.current = nq; setQueue(nq) }}
+                  style={{ background: 'none', border: 'none', color: DIM2, cursor: 'pointer', fontSize: 16, padding: '2px 4px', flexShrink: 0 }}
+                >✕</button>
+              </div>
+            ))}
+            {played.length > 0 && (
+              <>
+                <div style={{ padding: '8px 16px 4px', position: 'sticky', top: 28, background: SURFACE, zIndex: 1 }}>
+                  <span style={{ fontSize: 11, color: DIM2, fontWeight: 700, letterSpacing: 1.5 }}>HISTORY</span>
+                </div>
+                {played.map((t, i) => (
+                  <div
+                    key={`h-${t.id}-${i}`}
+                    onClick={() => playTrackDirect(t)}
+                    style={{ display: 'flex', gap: 10, padding: '6px 16px', alignItems: 'center', borderTop: `1px solid ${SURFACE3}`, cursor: 'pointer', opacity: 0.7 }}
+                    onMouseEnter={e => { e.currentTarget.style.background = SURFACE2; e.currentTarget.style.opacity = '1' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '0.7' }}
+                  >
+                    {t.albumArt && (
+                      <img src={t.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
+                      <div style={{ fontSize: 11, color: DIM }}>{t.artist}</div>
+                    </div>
+                    <span style={{ fontSize: 11, color: DIM2, flexShrink: 0 }}>▶</span>
+                  </div>
+                ))}
+              </>
             )}
           </div>
         )}
