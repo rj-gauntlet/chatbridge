@@ -60,3 +60,22 @@
 | `frontend/src/renderer/components/ChatBridge/AuthPage.tsx` | Login/Register UI |
 | `frontend/src/renderer/components/ChatBridge/ChatWindow.tsx` | Full chat UI with streaming |
 | `frontend/src/renderer/components/ChatBridge/ChatBridgeApp.tsx` | Root component (auth gate) |
+
+## Phase 3: Additional Apps — 2026-04-01
+- **Status:** Complete
+- **Deliverables:** 6/6 complete
+- **Files created:**
+  - `apps/flashcards/` — full Vite+React+TS app scaffold + bridge + App.tsx (topic-based card bank, 4 tools, score/grade tracking)
+  - `apps/canvas/` — HTML5 canvas drawing app + bridge + App.tsx (color picker, brush sizes, eraser, undo, 4 tools)
+  - `apps/spotify/` — Spotify OAuth2 app + bridge + App.tsx (search, playlist builder, OAuth popup flow, mock mode)
+  - `backend/src/__tests__/phase3.test.ts` — 12 new tests (policy gate + firewall for all 3 apps)
+- **Files modified:**
+  - `backend/src/routes/oauth.ts` — Added Spotify API proxy routes (status, search, playlist create/list) with auto-token-refresh and mock fallback
+  - `backend/src/seed/apps.ts` — Updated all 4 apps with full tool schemas matching actual implementations
+  - `supabase/migrations/001_init.sql` — Made fully idempotent (DROP TRIGGER/POLICY IF EXISTS)
+- **Tests:** 25/25 passing (12 new Phase 3 tests)
+- **Deviations:**
+  - Flashcard app uses built-in card bank (math/science/history/vocab) instead of accepting custom cards — simpler and reliable for demo (minor, better UX)
+  - Spotify shows mock data when SPOTIFY_CLIENT_ID is empty — graceful degradation (minor, required for demo without real creds)
+  - Migration fix: previous partial run left triggers; updated SQL to be fully idempotent
+- **Notes:** Migration SQL was blocking — user ran manually via Supabase SQL Editor. Seed to be run after migration succeeds.

@@ -600,19 +600,19 @@ chatbridge/
 **Goal:** 3 more apps integrated, demonstrating different patterns
 
 **Deliverables:**
-- [ ] Flashcard Quiz app (internal, no auth, educational)
+- [x] Flashcard Quiz app (internal, no auth, educational)
   - Tools: `start_quiz`, `get_question`, `submit_answer`, `get_results`
   - UI: question display, answer input, score tracking, completion summary
-- [ ] Drawing Canvas app (internal, rich UI)
+- [x] Drawing Canvas app (internal, rich UI)
   - Tools: `open_canvas`, `save_drawing`, `clear_canvas`, `get_drawing_info`
   - UI: HTML5 Canvas with color picker, brush sizes, undo, export
-- [ ] Spotify Playlist Creator (OAuth2, external API)
+- [x] Spotify Playlist Creator (OAuth2, external API)
   - OAuth2 flow working (authorize > callback > token storage > refresh)
   - Tools: `search_tracks`, `create_playlist`, `add_to_playlist`, `get_user_playlists`
   - UI: search results, playlist builder, connected account indicator
-- [ ] Multi-app routing working (chatbot picks correct app)
-- [ ] App switching within a single conversation
-- [ ] Error handling for app failures (timeout, crash, invalid response)
+- [x] Multi-app routing working (chatbot picks correct app)
+- [x] App switching within a single conversation
+- [x] Error handling for app failures (timeout, crash, invalid response)
 
 **Key Tasks:**
 1. Build Flashcard app in `apps/flashcards/` + postMessage bridge + register tools
