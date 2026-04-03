@@ -359,6 +359,92 @@ router.post('/spotify/playlist', requireAuth, async (req: AuthenticatedRequest, 
 })
 
 /**
+ * GET /api/oauth/spotify/player
+ * Get current Spotify playback state (track, position, is_playing)
+ */
+router.get('/spotify/player', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { data: appReg } = await supabaseAdmin
+      .from('app_registrations').select('id').eq('slug', 'spotify').single()
+    if (!appReg) throw createError('Spotify app not registered', 404)
+    const token = await getSpotifyToken(req.userId!, appReg.id)
+    if (!token) return res.json({ is_playing: false })
+    const spotifyRes = await fetch('https://api.spotify.com/v1/me/player', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (spotifyRes.status === 204 || !spotifyRes.ok) return res.json({ is_playing: false })
+    const data = await spotifyRes.json() as {
+      is_playing: boolean
+      progress_ms: number
+      item: { duration_ms: number; name: string; uri: string; artists: Array<{ name: string }>; album: { name: string; images: Array<{ url: string }> } } | null
+    }
+    res.json({
+      is_playing: data.is_playing,
+      progress_ms: data.progress_ms,
+      duration_ms: data.item?.duration_ms ?? 0,
+      track: data.item ? {
+        name: data.item.name,
+        artist: data.item.artists.map(a => a.name).join(', '),
+        album: data.item.album.name,
+        albumArt: data.item.album.images[0]?.url ?? '',
+        uri: data.item.uri,
+      } : null,
+    })
+  } catch (err) { next(err) }
+})
+
+/**
+ * PUT /api/oauth/spotify/pause
+ */
+router.put('/spotify/pause', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { data: appReg } = await supabaseAdmin
+      .from('app_registrations').select('id').eq('slug', 'spotify').single()
+    if (!appReg) throw createError('Spotify app not registered', 404)
+    const token = await getSpotifyToken(req.userId!, appReg.id)
+    if (!token) throw createError('Not connected', 401)
+    await fetch('https://api.spotify.com/v1/me/player/pause', {
+      method: 'PUT', headers: { Authorization: `Bearer ${token}` },
+    })
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+/**
+ * PUT /api/oauth/spotify/resume
+ */
+router.put('/spotify/resume', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { data: appReg } = await supabaseAdmin
+      .from('app_registrations').select('id').eq('slug', 'spotify').single()
+    if (!appReg) throw createError('Spotify app not registered', 404)
+    const token = await getSpotifyToken(req.userId!, appReg.id)
+    if (!token) throw createError('Not connected', 401)
+    await fetch('https://api.spotify.com/v1/me/player/play', {
+      method: 'PUT', headers: { Authorization: `Bearer ${token}` },
+    })
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+/**
+ * POST /api/oauth/spotify/next
+ */
+router.post('/spotify/next', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { data: appReg } = await supabaseAdmin
+      .from('app_registrations').select('id').eq('slug', 'spotify').single()
+    if (!appReg) throw createError('Spotify app not registered', 404)
+    const token = await getSpotifyToken(req.userId!, appReg.id)
+    if (!token) throw createError('Not connected', 401)
+    await fetch('https://api.spotify.com/v1/me/player/next', {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+    })
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+/**
  * GET /api/oauth/spotify/devices
  * List user's available Spotify Connect devices
  */

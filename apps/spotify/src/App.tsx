@@ -105,6 +105,8 @@ export default function App() {
   const deviceIdRef = useRef<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const connectPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const connectModeRef = useRef(false)  // true = playing via Spotify Connect API
   const queueRef = useRef<Track[]>([])
   const volumeRef = useRef(80)
   const pendingPlayRef = useRef<Track | null>(null)  // track waiting for audio unlock
@@ -112,6 +114,31 @@ export default function App() {
   // Keep queueRef in sync with queue state
   useEffect(() => { queueRef.current = queue }, [queue])
   useEffect(() => { volumeRef.current = volume }, [volume])
+
+  // ── Spotify Connect polling (updates progress + track info from API) ───────
+  const stopConnectPoll = useCallback(() => {
+    if (connectPollRef.current) { clearInterval(connectPollRef.current); connectPollRef.current = null }
+  }, [])
+
+  const startConnectPoll = useCallback(() => {
+    stopConnectPoll()
+    connectPollRef.current = setInterval(async () => {
+      try {
+        const state = await apiFetch('/api/oauth/spotify/player')
+        if (!state || !state.track) return
+        setCurrentTrack(t => {
+          // Update album art if it was missing
+          if (t && !t.albumArt && state.track.albumArt) return { ...t, albumArt: state.track.albumArt }
+          return t
+        })
+        setIsPlaying(state.is_playing)
+        if (state.duration_ms > 0) {
+          setProgress(state.progress_ms / state.duration_ms)
+          setDuration(state.duration_ms)
+        }
+      } catch { /* ignore poll errors */ }
+    }, 1500)
+  }, [stopConnectPoll])
 
   // ── Progress timer (for preview mode) ────────────────────────────────────
 
@@ -180,15 +207,19 @@ export default function App() {
           body: JSON.stringify({ uri: track.uri, deviceId: targetDeviceId }),
         })
         if (result.success) {
+          connectModeRef.current = true
           setCurrentTrack(track)
           setIsPlaying(true)
           setProgress(0)
+          setDuration(0)
+          startConnectPoll()
           return 'sdk'
         }
       }
     } catch {
       // Fall through to preview
     }
+    connectModeRef.current = false
 
     // Fallback: 30-second preview
     if (!track.previewUrl) return 'error'
@@ -343,8 +374,9 @@ export default function App() {
       playerRef.current?.disconnect()
       audioRef.current?.pause()
       clearProgressTimer()
+      stopConnectPoll()
     }
-  }, [clearProgressTimer])
+  }, [clearProgressTimer, stopConnectPoll])
 
   // ── OAuth connect ─────────────────────────────────────────────────────────
 
@@ -450,17 +482,20 @@ export default function App() {
   }, [clearProgressTimer, playTrackDirect])
 
   const handlePause = useCallback(async (_params?: Record<string, unknown>) => {
-    playerRef.current?.pause().catch(() => {})
-    if (audioRef.current) {
-      audioRef.current.pause()
-      clearProgressTimer()
+    if (connectModeRef.current) {
+      await apiFetch('/api/oauth/spotify/pause', { method: 'PUT' }).catch(() => {})
+    } else {
+      playerRef.current?.pause().catch(() => {})
+      if (audioRef.current) { audioRef.current.pause(); clearProgressTimer() }
     }
     setIsPlaying(false)
     return { success: true }
   }, [clearProgressTimer])
 
   const handleResume = useCallback(async (_params?: Record<string, unknown>) => {
-    if (playerRef.current) {
+    if (connectModeRef.current) {
+      await apiFetch('/api/oauth/spotify/resume', { method: 'PUT' }).catch(() => {})
+    } else if (playerRef.current) {
       await playerRef.current.resume().catch(() => {})
     } else if (audioRef.current?.src) {
       await audioRef.current.play().catch(() => {})
@@ -480,6 +515,10 @@ export default function App() {
   }, [])
 
   const handleSkipNext = useCallback(async (_params?: Record<string, unknown>) => {
+    if (connectModeRef.current) {
+      await apiFetch('/api/oauth/spotify/next', { method: 'POST' }).catch(() => {})
+      return { success: true, track: 'skipped on device' }
+    }
     if (playerRef.current && deviceIdRef.current) {
       await playerRef.current.nextTrack().catch(() => {})
       return { success: true, track: 'skipped via SDK' }
