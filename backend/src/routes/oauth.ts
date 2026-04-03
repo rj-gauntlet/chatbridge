@@ -412,6 +412,8 @@ router.put('/spotify/pause', requireAuth, async (req: AuthenticatedRequest, res,
 
 /**
  * PUT /api/oauth/spotify/resume
+ * Resumes playback. Fetches an available device and passes device_id so Spotify
+ * can activate the device even if it became "inactive" while paused.
  */
 router.put('/spotify/resume', requireAuth, async (req: AuthenticatedRequest, res, next) => {
   try {
@@ -420,8 +422,28 @@ router.put('/spotify/resume', requireAuth, async (req: AuthenticatedRequest, res
     if (!appReg) throw createError('Spotify app not registered', 404)
     const token = await getSpotifyToken(req.userId!, appReg.id)
     if (!token) throw createError('Not connected', 401)
-    await fetch('https://api.spotify.com/v1/me/player/play', {
-      method: 'PUT', headers: { Authorization: `Bearer ${token}` },
+
+    // Fetch devices so we can target one explicitly — Spotify sometimes fails resume
+    // without device_id when the device has gone "inactive" since the pause.
+    let deviceId: string | null = null
+    try {
+      const devRes = await fetch('https://api.spotify.com/v1/me/player/devices', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (devRes.ok) {
+        const devData = await devRes.json() as { devices: Array<{ id: string; is_active: boolean }> }
+        const active = devData.devices.find(d => d.is_active) || devData.devices[0]
+        if (active) deviceId = active.id
+      }
+    } catch { /* ignore — fall back to no device_id */ }
+
+    const url = deviceId
+      ? `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`
+      : 'https://api.spotify.com/v1/me/player/play'
+
+    await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     })
     res.json({ success: true })
   } catch (err) { next(err) }
@@ -537,6 +559,32 @@ router.get('/spotify/playlists', requireAuth, async (req: AuthenticatedRequest, 
   } catch (err) {
     next(err)
   }
+})
+
+/**
+ * GET /api/oauth/spotify/albumart?url=...
+ * Server-side proxy for Spotify CDN album art images.
+ * Sandboxed iframes have Origin: null which some CDNs reject — proxying through
+ * the backend avoids CORS/referrer issues entirely.
+ * No auth required — album art URLs are public.
+ */
+router.get('/spotify/albumart', async (req, res, next) => {
+  try {
+    const url = req.query.url as string
+    if (!url || !url.startsWith('https://i.scdn.co/')) {
+      return res.status(400).json({ error: 'Invalid URL — must be a Spotify CDN image (i.scdn.co)' })
+    }
+    const imgRes = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChatBridge/1.0)' },
+    })
+    if (!imgRes.ok) return res.status(imgRes.status).end()
+    const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    const buffer = await imgRes.arrayBuffer()
+    res.send(Buffer.from(buffer))
+  } catch (err) { next(err) }
 })
 
 // ── Mock data helpers ────────────────────────────────────────────────────────

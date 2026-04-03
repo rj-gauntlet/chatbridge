@@ -234,79 +234,93 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
         </Box>
       </Box>
 
-      {/* Main area */}
-      <Flex flex={1} direction="column" style={{ minWidth: 0 }}>
-        {/* Active app iframe */}
+      {/* Main area: chat left + plugin panel right */}
+      <Flex flex={1} direction="row" style={{ minWidth: 0, overflow: 'hidden' }}>
+
+        {/* Chat column */}
+        <Flex flex={1} direction="column" style={{ minWidth: 0 }}>
+          {/* Messages */}
+          <ScrollArea flex={1} p="md" viewportRef={scrollRef}>
+            {messages.length === 0 && !streaming ? (
+              <Box ta="center" mt="20vh">
+                <Text size="xl">👋</Text>
+                <Text size="lg" fw={500} mt="sm">What can I help you with?</Text>
+                <Text c="dimmed" size="sm" mt={4}>Try: "Let's play chess", "Quiz me on history", "Open the drawing canvas", or "Play some music on Spotify"</Text>
+              </Box>
+            ) : (
+              <Stack gap="md" pb="xl">
+                {messages.map(msg => (
+                  <Flex key={msg.id} justify={msg.role === 'user' ? 'flex-end' : 'flex-start'} gap="sm">
+                    {msg.role === 'assistant' && <Avatar size="sm" color="blue" radius="xl">AI</Avatar>}
+                    <Paper
+                      p="sm"
+                      radius="md"
+                      maw="75%"
+                      bg={msg.role === 'user' ? 'blue' : 'white'}
+                      style={{ border: msg.role === 'assistant' ? '1px solid var(--mantine-color-gray-2)' : 'none' }}
+                    >
+                      <Text size="sm" c={msg.role === 'user' ? 'white' : 'inherit'} style={{ whiteSpace: 'pre-wrap' }}>
+                        {msg.content}
+                      </Text>
+                    </Paper>
+                    {msg.role === 'user' && <Avatar size="sm" color="gray" radius="xl">You</Avatar>}
+                  </Flex>
+                ))}
+
+                {(streaming || streamingContent) && (
+                  <Flex justify="flex-start" gap="sm">
+                    <Avatar size="sm" color="blue" radius="xl">AI</Avatar>
+                    <Paper p="sm" radius="md" maw="75%" bg="white" style={{ border: '1px solid var(--mantine-color-gray-2)' }}>
+                      {streamingContent ? (
+                        <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{streamingContent}</Text>
+                      ) : (
+                        <Loader size="xs" type="dots" />
+                      )}
+                    </Paper>
+                  </Flex>
+                )}
+              </Stack>
+            )}
+          </ScrollArea>
+
+          {/* Input */}
+          <Box p="md" bg="white" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+            <Group gap="sm" align="flex-end">
+              <Textarea
+                flex={1}
+                placeholder="Try: Let's play chess! (Enter to send)"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                autosize
+                minRows={1}
+                maxRows={6}
+                disabled={streaming}
+                styles={{ input: { resize: 'none' } }}
+              />
+              <ActionIcon size="lg" variant="filled" onClick={sendMessage} loading={streaming} disabled={!input.trim()}>
+                <IconSend size={16} />
+              </ActionIcon>
+            </Group>
+          </Box>
+        </Flex>
+
+        {/* Plugin panel (right side, full height) */}
         {activePlugin && (
-          <Box px="md" pt="md">
+          <Box
+            w={420}
+            style={{
+              borderLeft: '1px solid var(--mantine-color-gray-2)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              flexShrink: 0,
+            }}
+          >
             <PluginFrame plugin={activePlugin} iframeRef={iframeRef} onClose={closeApp} onLoad={onIframeLoad} />
           </Box>
         )}
 
-        {/* Messages */}
-        <ScrollArea flex={1} p="md" viewportRef={scrollRef}>
-          {messages.length === 0 && !streaming ? (
-            <Box ta="center" mt="20vh">
-              <Text size="xl">👋</Text>
-              <Text size="lg" fw={500} mt="sm">What can I help you with?</Text>
-              <Text c="dimmed" size="sm" mt={4}>Try: "Let's play chess", "Quiz me on history", "Open the drawing canvas", or "Create a Spotify playlist"</Text>
-            </Box>
-          ) : (
-            <Stack gap="md" pb="xl">
-              {messages.map(msg => (
-                <Flex key={msg.id} justify={msg.role === 'user' ? 'flex-end' : 'flex-start'} gap="sm">
-                  {msg.role === 'assistant' && <Avatar size="sm" color="blue" radius="xl">AI</Avatar>}
-                  <Paper
-                    p="sm"
-                    radius="md"
-                    maw="70%"
-                    bg={msg.role === 'user' ? 'blue' : 'white'}
-                    style={{ border: msg.role === 'assistant' ? '1px solid var(--mantine-color-gray-2)' : 'none' }}
-                  >
-                    <Text size="sm" c={msg.role === 'user' ? 'white' : 'inherit'} style={{ whiteSpace: 'pre-wrap' }}>
-                      {msg.content}
-                    </Text>
-                  </Paper>
-                  {msg.role === 'user' && <Avatar size="sm" color="gray" radius="xl">You</Avatar>}
-                </Flex>
-              ))}
-
-              {(streaming || streamingContent) && (
-                <Flex justify="flex-start" gap="sm">
-                  <Avatar size="sm" color="blue" radius="xl">AI</Avatar>
-                  <Paper p="sm" radius="md" maw="70%" bg="white" style={{ border: '1px solid var(--mantine-color-gray-2)' }}>
-                    {streamingContent ? (
-                      <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{streamingContent}</Text>
-                    ) : (
-                      <Loader size="xs" type="dots" />
-                    )}
-                  </Paper>
-                </Flex>
-              )}
-            </Stack>
-          )}
-        </ScrollArea>
-
-        {/* Input */}
-        <Box p="md" bg="white" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
-          <Group gap="sm" align="flex-end">
-            <Textarea
-              flex={1}
-              placeholder="Try: Let's play chess! (Enter to send)"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              autosize
-              minRows={1}
-              maxRows={6}
-              disabled={streaming}
-              styles={{ input: { resize: 'none' } }}
-            />
-            <ActionIcon size="lg" variant="filled" onClick={sendMessage} loading={streaming} disabled={!input.trim()}>
-              <IconSend size={16} />
-            </ActionIcon>
-          </Group>
-        </Box>
       </Flex>
     </Flex>
   )

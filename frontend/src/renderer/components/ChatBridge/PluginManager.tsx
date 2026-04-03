@@ -243,13 +243,12 @@ interface PluginFrameProps {
 export function PluginFrame({ plugin, iframeRef, onClose, onLoad }: PluginFrameProps) {
   return (
     <div style={{
-      position: 'relative',
+      display: 'flex',
+      flexDirection: 'column',
       width: '100%',
-      border: '1px solid #dee2e6',
-      borderRadius: 8,
-      overflow: 'hidden',
+      height: '100%',
       background: '#fff',
-      marginBottom: 8,
+      overflow: 'hidden',
     }}>
       {/* App header bar */}
       <div style={{
@@ -260,6 +259,7 @@ export function PluginFrame({ plugin, iframeRef, onClose, onLoad }: PluginFrameP
         background: '#f8f9fa',
         borderBottom: '1px solid #dee2e6',
         fontSize: 13,
+        flexShrink: 0,
       }}>
         <span style={{ fontWeight: 500, color: '#495057' }}>
           {plugin.status === 'loading' ? '⏳ Loading...' : `🎮 ${plugin.appSlug}`}
@@ -273,7 +273,7 @@ export function PluginFrame({ plugin, iframeRef, onClose, onLoad }: PluginFrameP
         </button>
       </div>
 
-      {/* Sandboxed iframe */}
+      {/* Sandboxed iframe — fills all remaining height */}
       <iframe
         ref={iframeRef as React.RefObject<HTMLIFrameElement>}
         src={plugin.iframeUrl}
@@ -284,9 +284,10 @@ export function PluginFrame({ plugin, iframeRef, onClose, onLoad }: PluginFrameP
         onLoad={onLoad}
         style={{
           width: '100%',
-          height: 520,
+          flex: 1,
           border: 'none',
           display: 'block',
+          minHeight: 0,
           opacity: plugin.status === 'loading' ? 0.5 : 1,
           transition: 'opacity 0.2s',
         }}
