@@ -71,10 +71,15 @@ app.use('/apps', express.static(path.join(process.cwd(), 'public/apps'), {
     // (without allow-same-origin) have an opaque/null origin. ES module scripts always
     // fetch in CORS mode, so without this header the browser blocks index.js from loading.
     res.setHeader('Access-Control-Allow-Origin', '*')
+    // CORP fix: helmet sets Cross-Origin-Resource-Policy: same-origin globally.
+    // Sandboxed iframes without allow-same-origin have an opaque (null) origin, which
+    // is cross-origin from localhost:3001. CORP same-origin blocks script/fetch loads
+    // from within the sandboxed iframe. Override to cross-origin for /apps/* static files.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
     res.setHeader('X-Frame-Options', 'ALLOWALL')
     res.setHeader(
       'Content-Security-Policy',
-      `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co; connect-src 'self' https://api.spotify.com https://accounts.spotify.com ${FRONTEND_URL} ${VERCEL_URL}; img-src * data: blob:; frame-ancestors 'self' ${FRONTEND_URL} ${VERCEL_URL} http://localhost:5173 http://localhost:1212`,
+      `default-src 'self' http://localhost:3001; script-src 'self' http://localhost:3001 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co; connect-src 'self' http://localhost:3001 https://api.spotify.com https://accounts.spotify.com ${FRONTEND_URL} ${VERCEL_URL}; img-src * data: blob:; frame-ancestors 'self' ${FRONTEND_URL} ${VERCEL_URL} http://localhost:5173 http://localhost:1212`,
     )
   },
 }))

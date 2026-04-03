@@ -33,6 +33,8 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const pendingCalls = useRef<Map<string, PendingCall>>(new Map())
   const completionCallbacks = useRef<Array<(summary: string, state?: Record<string, unknown>) => void>>([])
+  // Resolvers waiting for the iframe to signal 'ready' before tool invocations can proceed.
+  const readyWaiters = useRef<Array<() => void>>([])
 
   // Listen for postMessages from iframes
   useEffect(() => {
@@ -56,6 +58,9 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
               '*',
             )
           }
+          // Flush any tool invocations that were queued before the iframe was ready
+          const waiters = readyWaiters.current.splice(0)
+          for (const resolve of waiters) resolve()
           break
         }
 
@@ -168,6 +173,19 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
           body: JSON.stringify({ correlationId, result: { error: 'App not open' } }),
         }).catch((e) => console.error('[PluginManager] tool-result POST failed (app not open):', e))
         return
+      }
+
+      // If the iframe is still loading, wait for it to signal 'ready' before
+      // sending the postMessage (otherwise the bridge hasn't started listening yet).
+      if (activePluginRef.current?.status !== 'ready') {
+        await new Promise<void>((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            readyWaiters.current = readyWaiters.current.filter(r => r !== doResolve)
+            reject(new Error('App iframe did not become ready within 10s'))
+          }, 10_000)
+          const doResolve = () => { clearTimeout(timeoutId); resolve() }
+          readyWaiters.current.push(doResolve)
+        })
       }
 
       try {

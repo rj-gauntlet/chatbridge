@@ -7,7 +7,13 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     rollupOptions: {
-      output: { entryFileNames: 'index.js', assetFileNames: 'index.[ext]' },
+      output: {
+        entryFileNames: 'index.js',
+        assetFileNames: 'index.[ext]',
+        format: 'iife',           // Avoids type="module" in HTML — required for sandboxed iframes
+        name: 'ChessApp',         // IIFE global name (not used externally)
+        inlineDynamicImports: true,
+      },
     },
   },
   server: { port: 5174 },
