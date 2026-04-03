@@ -162,32 +162,32 @@ export default function App() {
   // ── Playback core: try SDK then preview ───────────────────────────────────
 
   const playTrackDirect = useCallback(async (track: Track): Promise<'sdk' | 'preview' | 'error'> => {
-    // Try Spotify Web Playback SDK (Premium)
-    if (deviceIdRef.current) {
-      try {
-        const tokenData = await apiFetch('/api/oauth/spotify/token')
-        if (tokenData.token && tokenData.token !== 'mock-spotify-token') {
-          const resp = await fetch(
-            `https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`,
-            {
-              method: 'PUT',
-              headers: {
-                Authorization: `Bearer ${tokenData.token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ uris: [track.uri] }),
-            },
-          )
-          if (resp.ok || resp.status === 204) {
-            setCurrentTrack(track)
-            setIsPlaying(true)
-            setProgress(0)
-            return 'sdk'
-          }
+    // Try Spotify Web API (works for Premium on any active device — browser SDK or external)
+    try {
+      const tokenData = await apiFetch('/api/oauth/spotify/token')
+      if (tokenData.token && tokenData.token !== 'mock-spotify-token') {
+        // Build play URL — use SDK device_id if available, otherwise let Spotify pick active device
+        const playUrl = deviceIdRef.current
+          ? `https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`
+          : 'https://api.spotify.com/v1/me/player/play'
+        const resp = await fetch(playUrl, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${tokenData.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ uris: [track.uri] }),
+        })
+        if (resp.ok || resp.status === 204) {
+          setCurrentTrack(track)
+          setIsPlaying(true)
+          setProgress(0)
+          return 'sdk'
         }
-      } catch {
-        // Fall through to preview
+        // 404 = no active device, 403 = not Premium → fall through to preview
       }
+    } catch {
+      // Fall through to preview
     }
 
     // Fallback: 30-second preview
@@ -429,8 +429,8 @@ export default function App() {
     }
 
     if (!playedTrack || (mode === 'error' && !pendingPlayRef.current)) {
-      setStatusMsg('⚠️ No previews available — Spotify Premium needed for full playback')
-      return { success: false, error: 'No preview available for any matching track — Spotify Premium required for full playback' }
+      setStatusMsg('⚠️ Open Spotify on your phone or computer, then try again')
+      return { success: false, error: 'Could not play — make sure Spotify is open and active on one of your devices (phone, desktop, etc.), then try again' }
     }
 
     const t = playedTrack
@@ -442,9 +442,9 @@ export default function App() {
       album: t.album,
       mode,
       message: mode === 'sdk'
-        ? `Now playing: ${t.name} by ${t.artist}`
+        ? `Now playing on Spotify: ${t.name} by ${t.artist}`
         : mode === 'preview'
-          ? `Playing 30-second preview: ${t.name} by ${t.artist}`
+          ? `Playing 30-second preview: ${t.name} by ${t.artist} (open Spotify on any device for full track)`
           : 'Track found but needs audio permission — tap the player to start',
     }
   }, [clearProgressTimer, playTrackDirect])
