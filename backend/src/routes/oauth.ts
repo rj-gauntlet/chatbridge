@@ -30,8 +30,9 @@ router.get('/:app/authorize', requireAuth, async (req: AuthenticatedRequest, res
 
     if (!config) throw createError('App has no OAuth config', 500)
 
-    const redirectUri = process.env.SPOTIFY_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/oauth/${app}/callback`
+    const redirectUri = process.env.SPOTIFY_REDIRECT_URI || process.env.SPOTIFY_REDIRECT_URL || `${req.protocol}://${req.get('host')}/api/oauth/${app}/callback`
 
+    console.log('[oauth] authorize redirect_uri:', redirectUri)
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: config.client_id,
@@ -77,7 +78,7 @@ router.get('/:app/callback', async (req, res, next) => {
     }
 
     const clientSecret = app === 'spotify' ? process.env.SPOTIFY_CLIENT_SECRET : null
-    const redirectUri = process.env.SPOTIFY_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/oauth/${app}/callback`
+    const redirectUri = process.env.SPOTIFY_REDIRECT_URI || process.env.SPOTIFY_REDIRECT_URL || `${req.protocol}://${req.get('host')}/api/oauth/${app}/callback`
 
     // Exchange code for tokens
     const tokenRes = await fetch(config.token_url, {
