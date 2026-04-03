@@ -36,7 +36,6 @@ function getInitialState(): GameState {
 
 const PIECE_VALUES: Record<string, number> = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 }
 
-// Positional bonus tables (from white's perspective, rank 1–8, file a–h)
 const PAWN_TABLE = [
    0,  0,  0,  0,  0,  0,  0,  0,
   50, 50, 50, 50, 50, 50, 50, 50,
@@ -59,9 +58,9 @@ const KNIGHT_TABLE = [
 ]
 
 function squareIndex(sq: string): number {
-  const file = sq.charCodeAt(0) - 97  // a=0
-  const rank = parseInt(sq[1]) - 1    // 1=0
-  return (7 - rank) * 8 + file        // board index from white's perspective
+  const file = sq.charCodeAt(0) - 97
+  const rank = parseInt(sq[1]) - 1
+  return (7 - rank) * 8 + file
 }
 
 function evaluate(chess: Chess): number {
@@ -89,7 +88,6 @@ function evaluate(chess: Chess): number {
 function minimax(chess: Chess, depth: number, alpha: number, beta: number, isMaximizing: boolean): number {
   if (depth === 0 || chess.isGameOver()) return evaluate(chess)
   const moves = chess.moves({ verbose: true })
-  // Move ordering: captures first (better alpha-beta pruning)
   moves.sort((a, b) => {
     const aCapture = a.captured ? PIECE_VALUES[a.captured] || 0 : 0
     const bCapture = b.captured ? PIECE_VALUES[b.captured] || 0 : 0
@@ -142,6 +140,29 @@ function getBestMove(chess: Chess): { from: string; to: string; promotion?: stri
   return { from: bestMove.from, to: bestMove.to, promotion: bestMove.promotion || 'q' }
 }
 
+// ── Opening name detection ─────────────────────────────────────────────────
+
+function detectOpening(moveHistory: string[]): string | null {
+  const h = moveHistory
+  if (h.length < 2) return null
+  if (h[0] === 'e4' && h[1] === 'e5') {
+    if (h[2] === 'Nf3' && h[3] === 'Nc6' && h[4] === 'Bc4') return 'Italian Game'
+    if (h[2] === 'Nf3' && h[3] === 'Nc6' && h[4] === 'Bb5') return 'Ruy López'
+    if (h[2] === 'Nf3' && h[3] === 'Nc6') return 'King\'s Knight Opening'
+    return 'Open Game (1.e4 e5)'
+  }
+  if (h[0] === 'e4' && h[1] === 'c5') return 'Sicilian Defense'
+  if (h[0] === 'e4' && h[1] === 'e6') return 'French Defense'
+  if (h[0] === 'e4' && h[1] === 'c6') return 'Caro-Kann Defense'
+  if (h[0] === 'e4' && h[1] === 'Nf6') return 'Alekhine\'s Defense'
+  if (h[0] === 'd4' && h[1] === 'd5' && h[2] === 'c4') return 'Queen\'s Gambit'
+  if (h[0] === 'd4' && h[1] === 'Nf6' && h[2] === 'c4') return 'Indian Defense'
+  if (h[0] === 'd4' && h[1] === 'd5') return 'Closed Game (1.d4 d5)'
+  if (h[0] === 'Nf3') return 'Réti Opening'
+  if (h[0] === 'c4') return 'English Opening'
+  return null
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -151,11 +172,19 @@ export default function App() {
   const [message, setMessage] = useState<string>('Waiting for game to start...')
   const [playerColor, setPlayerColor] = useState<'w' | 'b' | null>(null)
   const [isAiThinking, setIsAiThinking] = useState(false)
+  const [openingName, setOpeningName] = useState<string | null>(null)
+
+  // Refs — give tool handlers access to latest values without stale closures
   const playerColorRef = useRef<'w' | 'b' | null>(null)
+  const gameStateRef = useRef<GameState>(getInitialState())
 
+  // Keep refs in sync with state
   useEffect(() => { playerColorRef.current = playerColor }, [playerColor])
+  useEffect(() => { gameStateRef.current = gameState }, [gameState])
 
-  const syncState = useCallback((chess: Chess, extraMessage?: string) => {
+  // ── syncState ─────────────────────────────────────────────────────────────
+
+  const syncState = useCallback((chess: Chess, extraMessage?: string): GameState => {
     const history = chess.history({ verbose: true })
     const capturedByWhite: string[] = []
     const capturedByBlack: string[] = []
@@ -172,18 +201,24 @@ export default function App() {
     else if (chess.isDraw()) status = 'draw'
     else if (chess.isStalemate()) status = 'stalemate'
 
+    const moveHistory = chess.history()
     const newState: GameState = {
       fen: chess.fen(),
       turn: chess.turn(),
       status,
-      moveHistory: chess.history(),
+      moveHistory,
       isCheck: chess.inCheck(),
       capturedByWhite,
       capturedByBlack,
     }
 
     setGameState(newState)
+    gameStateRef.current = newState
     sendStateUpdate(newState as unknown as Record<string, unknown>)
+
+    // Detect opening
+    const opening = detectOpening(moveHistory)
+    if (opening) setOpeningName(opening)
 
     if (extraMessage) setMessage(extraMessage)
 
@@ -193,43 +228,57 @@ export default function App() {
       setMessage(`Checkmate! ${winner} wins! 🏆`)
     } else if (status === 'draw') {
       sendCompletion('Chess game ended in a draw', newState as unknown as Record<string, unknown>)
-      setMessage("It's a draw!")
+      setMessage("It's a draw! 🤝")
     } else if (status === 'stalemate') {
       sendCompletion('Chess game ended in stalemate', newState as unknown as Record<string, unknown>)
-      setMessage('Stalemate!')
+      setMessage('Stalemate! 🤝')
     }
 
     return newState
   }, [])
 
-  // ── AI move trigger ────────────────────────────────────────────────────────
+  // ── AI move trigger (async — awaitable) ───────────────────────────────────
 
-  const triggerAiMove = useCallback((chess: Chess) => {
-    if (chess.isGameOver()) return
+  const triggerAiMove = useCallback(async (chess: Chess): Promise<GameState> => {
+    if (chess.isGameOver()) return syncState(chess)
     setIsAiThinking(true)
     setMessage('🤖 AI is thinking...')
-    setTimeout(() => {
-      const move = getBestMove(chess)
-      if (!move) { setIsAiThinking(false); return }
-      try {
-        chess.move(move)
-        setLastMove({ from: move.from, to: move.to })
-        const state = syncState(chess)
-        if (state.status === 'playing') {
-          const pc = playerColorRef.current
-          setMessage(pc === 'w' ? '⬜ Your turn (White)' : '⬛ Your turn (Black)')
-        }
-      } catch { /* ignore */ }
+
+    // Small delay so the user sees the board update before AI responds
+    await new Promise(resolve => setTimeout(resolve, 400))
+
+    const move = getBestMove(chess)
+    if (!move) {
       setIsAiThinking(false)
-    }, 300)
+      return syncState(chess)
+    }
+
+    try {
+      chess.move(move)
+      setLastMove({ from: move.from, to: move.to })
+      const state = syncState(chess)
+      if (state.status === 'playing') {
+        const pc = playerColorRef.current
+        setMessage(pc === 'w' ? '⬜ Your turn (White)' : '⬛ Your turn (Black)')
+      }
+      setIsAiThinking(false)
+      return state
+    } catch {
+      setIsAiThinking(false)
+      return syncState(chess)
+    }
   }, [syncState])
 
+  // ── Tool registration — runs ONCE on mount (empty deps, refs for all mutable state) ──
+
   useEffect(() => {
+    // ── start_game ──────────────────────────────────────────────────────────
     registerTool('start_game', async (params) => {
       const chess = new Chess()
       chessRef.current = chess
       setLastMove(null)
       setIsAiThinking(false)
+      setOpeningName(null)
 
       // Accept optional color param: 'w' = player is white, 'b' = player is black
       const color = (params.color as string) === 'b' ? 'b' : 'w'
@@ -238,23 +287,33 @@ export default function App() {
 
       const aiColor = color === 'w' ? 'b' : 'w'
       const colorLabel = color === 'w' ? 'White' : 'Black'
-      syncState(chess, `♟️ New game! You play as ${colorLabel}. ${color === 'w' ? 'Your turn!' : 'AI goes first…'}`)
 
-      // If player is black, AI (white) makes the first move
+      syncState(chess, color === 'w'
+        ? `♟️ New game! You play as White. Your turn!`
+        : `♟️ New game! You play as Black. AI goes first…`)
+
+      // If player is Black, AI (White) makes the first move — await it so we
+      // can include the AI's opening move in the tool result.
+      let aiFirstMove: string | null = null
       if (color === 'b') {
-        setTimeout(() => triggerAiMove(chess), 400)
+        const afterFirstMove = await triggerAiMove(chess)
+        aiFirstMove = afterFirstMove.moveHistory[0] || null
       }
 
       return {
         success: true,
-        fen: chess.fen(),
-        turn: chess.turn(),
+        fen: chessRef.current.fen(),
+        turn: chessRef.current.turn(),
         playerColor: color,
         aiColor,
-        message: (params.message as string) || `Game started. You play as ${colorLabel}.`,
+        aiFirstMove,
+        message: aiFirstMove
+          ? `Game started. You play as ${colorLabel}. I opened with ${aiFirstMove}.`
+          : `Game started. You play as ${colorLabel}.`,
       }
     })
 
+    // ── make_move ───────────────────────────────────────────────────────────
     registerTool('make_move', async (params) => {
       const chess = chessRef.current
       const { from, to, promotion = 'q' } = params as { from: string; to: string; promotion?: string }
@@ -262,48 +321,72 @@ export default function App() {
       if (!from || !to) throw new Error('from and to squares are required')
       if (chess.isGameOver()) throw new Error('Game is already over')
 
+      // Validate it's the player's turn
+      const pc = playerColorRef.current
+      if (pc && chess.turn() !== pc) {
+        throw new Error(`It is ${chess.turn() === 'w' ? 'White' : 'Black'}'s turn, not yours.`)
+      }
+
+      let moveResult
       try {
-        const moveResult = chess.move({ from, to, promotion: promotion as 'q' | 'r' | 'b' | 'n' })
+        moveResult = chess.move({ from, to, promotion: promotion as 'q' | 'r' | 'b' | 'n' })
         if (!moveResult) throw new Error(`Illegal move: ${from} → ${to}`)
-
-        setLastMove({ from, to })
-        const state = syncState(chess, `${chess.turn() === 'w' ? 'White' : 'Black'} to move`)
-
-        // If AI is playing and it's now AI's turn, auto-respond
-        const pc = playerColorRef.current
-        if (pc && chess.turn() !== pc && !chess.isGameOver()) {
-          triggerAiMove(chess)
-        }
-
-        return {
-          success: true,
-          move: moveResult.san,
-          fen: state.fen,
-          turn: state.turn,
-          isCheck: state.isCheck,
-          isCheckmate: state.status === 'checkmate',
-          isDraw: state.status === 'draw',
-          moveHistory: state.moveHistory,
-        }
       } catch {
         throw new Error(`Illegal move: ${from} → ${to}`)
       }
-    })
 
-    registerTool('get_board_state', async () => {
-      const chess = chessRef.current
+      setLastMove({ from, to })
+      const stateAfterPlayer = syncState(chess)
+      const playerMoveSan = moveResult.san
+
+      // If AI's turn now, await the AI's response so the result includes both moves
+      let finalState = stateAfterPlayer
+      let aiMoveSan: string | null = null
+
+      if (pc && !chess.isGameOver() && chess.turn() !== pc) {
+        const prevLen = chess.history().length
+        finalState = await triggerAiMove(chess)
+        if (finalState.moveHistory.length > prevLen) {
+          aiMoveSan = finalState.moveHistory[finalState.moveHistory.length - 1]
+        }
+      }
+
       return {
-        fen: chess.fen(),
-        turn: chess.turn(),
-        moveHistory: chess.history(),
-        isCheck: chess.inCheck(),
-        isGameOver: chess.isGameOver(),
-        status: gameState.status,
-        capturedByWhite: gameState.capturedByWhite,
-        capturedByBlack: gameState.capturedByBlack,
+        success: true,
+        playerMove: playerMoveSan,
+        aiMove: aiMoveSan,
+        fen: finalState.fen,
+        turn: finalState.turn,
+        isCheck: finalState.isCheck,
+        isCheckmate: finalState.status === 'checkmate',
+        isDraw: finalState.status === 'draw',
+        moveHistory: finalState.moveHistory,
+        message: aiMoveSan
+          ? `You played ${playerMoveSan}, I responded with ${aiMoveSan}.`
+          : `You played ${playerMoveSan}.`,
       }
     })
 
+    // ── get_board_state ─────────────────────────────────────────────────────
+    registerTool('get_board_state', async () => {
+      const chess = chessRef.current
+      const gs = gameStateRef.current
+      return {
+        fen: chess.fen(),
+        turn: chess.turn(),
+        turnLabel: chess.turn() === 'w' ? 'White' : 'Black',
+        playerColor: playerColorRef.current,
+        moveHistory: chess.history(),
+        isCheck: chess.inCheck(),
+        isGameOver: chess.isGameOver(),
+        status: gs.status,
+        capturedByWhite: gs.capturedByWhite,
+        capturedByBlack: gs.capturedByBlack,
+        openingName: detectOpening(chess.history()),
+      }
+    })
+
+    // ── get_legal_moves ─────────────────────────────────────────────────────
     registerTool('get_legal_moves', async (params) => {
       const chess = chessRef.current
       const { square } = params as { square?: string }
@@ -324,7 +407,14 @@ export default function App() {
 
     const origin = window.location.ancestorOrigins?.[0] || undefined
     initBridge(origin)
-  }, [syncState, gameState.status, triggerAiMove])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // intentionally empty — syncState and triggerAiMove are stable; mutable state accessed via refs
+
+  // Keep triggerAiMove ref in sync for the empty-dep useEffect closure
+  // (both are useCallback with [] or [syncState] deps so they're stable, but
+  //  we register them once via the above effect — the closures capture the
+  //  stable function references directly, which is safe.)
 
   // ── Player drag-drop ───────────────────────────────────────────────────────
 
@@ -332,19 +422,16 @@ export default function App() {
     const chess = chessRef.current
     const pc = playerColorRef.current
     if (chess.isGameOver() || !targetSquare || isAiThinking) return false
-    // Only allow moves for player's color
     if (pc && chess.turn() !== pc) return false
 
     try {
       const move = chess.move({ from: sourceSquare, to: targetSquare, promotion: 'q' })
       if (!move) return false
       setLastMove({ from: sourceSquare, to: targetSquare })
-      const state = syncState(chess)
-      // Trigger AI if it's now the AI's turn
+      syncState(chess)
+      // Trigger AI (fire-and-forget for drag-drop; no need to await)
       if (pc && !chess.isGameOver() && chess.turn() !== pc) {
         triggerAiMove(chess)
-      } else if (state.status === 'playing') {
-        setMessage(pc === 'w' ? '⬜ Your turn (White)' : '⬛ Your turn (Black)')
       }
       return true
     } catch {
@@ -352,7 +439,7 @@ export default function App() {
     }
   }, [syncState, triggerAiMove, isAiThinking])
 
-  // ── Color picker ───────────────────────────────────────────────────────────
+  // ── Color picker (manual in-iframe selection) ──────────────────────────────
 
   const pickColor = useCallback((color: 'w' | 'b') => {
     const chess = new Chess()
@@ -361,11 +448,23 @@ export default function App() {
     playerColorRef.current = color
     setLastMove(null)
     setIsAiThinking(false)
+    setOpeningName(null)
     syncState(chess, color === 'w' ? '⬜ You play White. Your turn!' : '⬛ You play Black. AI goes first…')
     if (color === 'b') {
-      setTimeout(() => triggerAiMove(chess), 400)
+      triggerAiMove(chess) // fire-and-forget for manual pick
     }
   }, [syncState, triggerAiMove])
+
+  // ── Reset ─────────────────────────────────────────────────────────────────
+
+  const resetGame = useCallback(() => {
+    setPlayerColor(null)
+    playerColorRef.current = null
+    setOpeningName(null)
+    setLastMove(null)
+    setIsAiThinking(false)
+    setMessage('Choose your color to start a new game.')
+  }, [])
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -376,66 +475,95 @@ export default function App() {
   }
   if (gameState.isCheck && gameState.status === 'playing') {
     const kingSquare = findKing(chessRef.current, gameState.turn)
-    if (kingSquare) customSquareStyles[kingSquare] = { backgroundColor: 'rgba(255, 0, 0, 0.4)' }
+    if (kingSquare) customSquareStyles[kingSquare] = { backgroundColor: 'rgba(255, 0, 0, 0.5)' }
   }
 
   const boardOrientation = playerColor === 'b' ? 'black' : 'white'
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 16, gap: 12, minHeight: '100vh', background: '#f8f9fa' }}>
+  const isGameOver = gameState.status !== 'idle' && gameState.status !== 'playing'
 
-      {/* Color picker shown before game starts */}
+  // Pair moves for display: [[1, 'e4', 'e5'], [2, 'Nf3', 'Nc6'], ...]
+  const pairedMoves: Array<[number, string, string | undefined]> = []
+  for (let i = 0; i < gameState.moveHistory.length; i += 2) {
+    pairedMoves.push([
+      Math.floor(i / 2) + 1,
+      gameState.moveHistory[i],
+      gameState.moveHistory[i + 1],
+    ])
+  }
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      padding: '12px 16px',
+      gap: 10,
+      minHeight: '100vh',
+      background: '#f8f9fa',
+      boxSizing: 'border-box',
+    }}>
+
+      {/* Color picker overlay — shown before game starts */}
       {playerColor === null && (
         <div style={{
-          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', background: '#f8f9fa', gap: 24, zIndex: 10,
+          position: 'absolute', inset: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          background: '#f8f9fa', gap: 24, zIndex: 10,
         }}>
-          <div style={{ fontSize: 28, fontWeight: 700, color: '#333' }}>♟️ Chess</div>
-          <div style={{ fontSize: 15, color: '#555' }}>Choose your color — AI plays the other</div>
+          <div style={{ fontSize: 32 }}>♟️</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: '#222' }}>Chess</div>
+          <div style={{ fontSize: 14, color: '#666' }}>Choose your color — AI plays the other side</div>
           <div style={{ display: 'flex', gap: 16 }}>
-            <button
-              onClick={() => pickColor('w')}
-              style={{
-                padding: '14px 32px', fontSize: 16, fontWeight: 600, borderRadius: 12,
-                border: '2px solid #333', background: '#fff', color: '#333', cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-              }}
-            >
-              ⬜ Play White
-            </button>
-            <button
-              onClick={() => pickColor('b')}
-              style={{
-                padding: '14px 32px', fontSize: 16, fontWeight: 600, borderRadius: 12,
-                border: '2px solid #333', background: '#333', color: '#fff', cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-              }}
-            >
-              ⬛ Play Black
-            </button>
+            <button onClick={() => pickColor('w')} style={{
+              padding: '14px 28px', fontSize: 15, fontWeight: 600, borderRadius: 12,
+              border: '2px solid #333', background: '#fff', color: '#333', cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+            }}>⬜ Play White</button>
+            <button onClick={() => pickColor('b')} style={{
+              padding: '14px 28px', fontSize: 15, fontWeight: 600, borderRadius: 12,
+              border: '2px solid #333', background: '#333', color: '#fff', cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+            }}>⬛ Play Black</button>
           </div>
         </div>
       )}
 
       {/* Status bar */}
       <div style={{
-        width: '100%', maxWidth: 480, padding: '8px 16px', borderRadius: 8,
-        background: gameState.status === 'playing' ? (gameState.isCheck ? '#fff3cd' : '#d4edda') :
-                    gameState.status === 'idle' ? '#e2e3e5' : '#d4edda',
-        border: `1px solid ${gameState.isCheck ? '#ffc107' : '#c3e6cb'}`,
-        textAlign: 'center', fontSize: 14, fontWeight: 500, color: '#333',
+        width: '100%', maxWidth: 480,
+        padding: '8px 14px', borderRadius: 8,
+        background: gameState.isCheck
+          ? '#fff3cd'
+          : isGameOver ? '#d1ecf1'
+          : '#d4edda',
+        border: `1px solid ${gameState.isCheck ? '#ffc107' : isGameOver ? '#bee5eb' : '#c3e6cb'}`,
+        textAlign: 'center', fontSize: 13, fontWeight: 500, color: '#333',
+        flexShrink: 0,
       }}>
-        {message}
+        <span>{message}</span>
         {gameState.status === 'playing' && !isAiThinking && (
-          <span style={{ marginLeft: 8, opacity: 0.7 }}>
-            {gameState.turn === 'w' ? '⬜ White' : '⬛ Black'} to move
-            {gameState.isCheck && ' — CHECK!'}
+          <span style={{ marginLeft: 6, opacity: 0.65 }}>
+            — {gameState.turn === 'w' ? '⬜ White' : '⬛ Black'} to move
+            {gameState.isCheck && ' ⚠️ CHECK!'}
           </span>
         )}
       </div>
 
+      {/* Opening name badge */}
+      {openingName && gameState.status === 'playing' && (
+        <div style={{
+          fontSize: 11, color: '#6c757d',
+          background: '#e9ecef', borderRadius: 12,
+          padding: '2px 10px', fontStyle: 'italic',
+        }}>
+          📖 {openingName}
+        </div>
+      )}
+
       {/* Board */}
-      <div style={{ width: '100%', maxWidth: 480 }}>
+      <div style={{ width: '100%', maxWidth: 480, flexShrink: 0 }}>
         <Chessboard
           options={{
             position: gameState.fen,
@@ -449,40 +577,69 @@ export default function App() {
         />
       </div>
 
-      {/* Move history */}
-      {gameState.moveHistory.length > 0 && (
+      {/* Captured pieces */}
+      {(gameState.capturedByWhite.length > 0 || gameState.capturedByBlack.length > 0) && (
+        <div style={{ width: '100%', maxWidth: 480, fontSize: 12, color: '#555', display: 'flex', gap: 16 }}>
+          {gameState.capturedByWhite.length > 0 && (
+            <span>⬜ captured: {gameState.capturedByWhite.map(p => PIECE_SYMBOLS[p] || p).join(' ')}</span>
+          )}
+          {gameState.capturedByBlack.length > 0 && (
+            <span>⬛ captured: {gameState.capturedByBlack.map(p => PIECE_SYMBOLS[p] || p).join(' ')}</span>
+          )}
+        </div>
+      )}
+
+      {/* Move history — scrollable, paired notation */}
+      {pairedMoves.length > 0 && (
         <div style={{ width: '100%', maxWidth: 480 }}>
-          <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Move history:</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {gameState.moveHistory.map((m, i) => (
-              <span key={i} style={{
-                padding: '2px 6px',
-                background: i % 2 === 0 ? '#e9ecef' : '#dee2e6',
-                borderRadius: 4, fontSize: 12, fontFamily: 'monospace',
+          <div style={{ fontSize: 11, color: '#888', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Move history
+          </div>
+          <div style={{
+            display: 'flex', flexWrap: 'nowrap', gap: 4,
+            overflowX: 'auto', paddingBottom: 4,
+            scrollbarWidth: 'thin',
+          }}>
+            {pairedMoves.map(([num, white, black]) => (
+              <span key={num} style={{
+                display: 'inline-flex', gap: 3, alignItems: 'center',
+                padding: '2px 6px', background: '#e9ecef', borderRadius: 4,
+                fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', flexShrink: 0,
               }}>
-                {i % 2 === 0 && <span style={{ color: '#999', marginRight: 2 }}>{Math.floor(i / 2) + 1}.</span>}
-                {m}
+                <span style={{ color: '#999' }}>{num}.</span>
+                <span>{white}</span>
+                {black && <span style={{ color: '#555' }}>{black}</span>}
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {/* New game button */}
-      {gameState.status !== 'idle' && gameState.status !== 'playing' && (
+      {/* New Game button — always shown once a game is active */}
+      {playerColor !== null && (
         <button
-          onClick={() => setPlayerColor(null)}
+          onClick={resetGame}
           style={{
-            padding: '10px 24px', fontSize: 14, fontWeight: 600, borderRadius: 8,
-            border: 'none', background: '#333', color: '#fff', cursor: 'pointer',
+            padding: '8px 20px', fontSize: 13, fontWeight: 600, borderRadius: 8,
+            border: '1px solid #adb5bd', background: isGameOver ? '#333' : '#fff',
+            color: isGameOver ? '#fff' : '#495057',
+            cursor: 'pointer', marginTop: 4,
           }}
         >
-          New Game
+          {isGameOver ? '🔄 New Game' : '↩ New Game'}
         </button>
       )}
     </div>
   )
 }
+
+// ── Piece symbol map ──────────────────────────────────────────────────────
+
+const PIECE_SYMBOLS: Record<string, string> = {
+  p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚',
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 function findKing(chess: Chess, color: 'w' | 'b'): string | null {
   const board = chess.board()

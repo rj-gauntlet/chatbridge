@@ -6,8 +6,9 @@
 export type ToolHandler = (params: Record<string, unknown>) => Promise<Record<string, unknown>>
 
 const APP_SLUG = 'chess'
-let handlers: Map<string, ToolHandler> = new Map()
+const handlers: Map<string, ToolHandler> = new Map()
 let allowedOrigin: string | null = null
+let bridgeInitialized = false  // Guard: prevent adding multiple message listeners
 
 /** Register a tool handler */
 export function registerTool(name: string, handler: ToolHandler) {
@@ -39,15 +40,28 @@ export function sendError(code: string, message: string) {
   sendToParent({ type: 'error', appSlug: APP_SLUG, code, message })
 }
 
-/** Listen for incoming tool invocations from the platform */
+/** Listen for incoming tool invocations from the platform.
+ *  Safe to call multiple times — only initializes the listener once. */
 export function initBridge(trustedOrigin?: string) {
   allowedOrigin = trustedOrigin || null
+
+  if (bridgeInitialized) {
+    // Already listening — just re-signal ready so the platform knows we're up
+    setTimeout(signalReady, 100)
+    return
+  }
+  bridgeInitialized = true
 
   window.addEventListener('message', async (event) => {
     // Origin validation — in production this checks against known platform origin
     if (allowedOrigin && event.origin !== allowedOrigin) return
 
-    const msg = event.data as { type?: string; correlationId?: string; toolName?: string; parameters?: Record<string, unknown> }
+    const msg = event.data as {
+      type?: string
+      correlationId?: string
+      toolName?: string
+      parameters?: Record<string, unknown>
+    }
 
     if (msg.type === 'ping') {
       sendToParent({ type: 'pong' })

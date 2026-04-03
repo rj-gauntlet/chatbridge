@@ -24,10 +24,11 @@ const apps = [
     tools: [
       {
         name: 'start_game',
-        description: 'Start a new chess game. Resets the board to the initial position.',
+        description: 'Start a new chess game. Resets the board to the initial position. IMPORTANT: Always pass color="b" if the user wants to play as Black, color="w" for White (default). When player is Black, the AI will make the first move automatically — the result will include aiFirstMove.',
         inputSchema: {
           type: 'object',
           properties: {
+            color: { type: 'string', description: 'Player color: "w" for White (default), "b" for Black' },
             message: { type: 'string', description: 'Optional opening message to display' },
           },
           required: [],
@@ -36,15 +37,17 @@ const apps = [
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            fen: { type: 'string', description: 'Initial board position in FEN notation' },
-            turn: { type: 'string', description: 'Whose turn it is: w or b' },
+            playerColor: { type: 'string', description: 'The color the human player is playing: w or b' },
+            fen: { type: 'string', description: 'Board position in FEN notation after any AI first move' },
+            turn: { type: 'string', description: 'Whose turn it is next: w or b' },
+            aiFirstMove: { type: 'string', description: 'The AI\'s opening move in SAN notation (only present when player is Black)' },
             message: { type: 'string' },
           },
         },
       },
       {
         name: 'make_move',
-        description: 'Make a chess move using algebraic notation (e.g. e2 to e4). Validates the move and updates the board.',
+        description: 'Make the HUMAN PLAYER\'s chess move. Validates the move, updates the board, then automatically triggers the AI opponent\'s response. NEVER call this tool for the AI opponent — the AI move happens automatically and is returned in the result as aiMove. Only call this tool once per user turn.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -58,13 +61,15 @@ const apps = [
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            move: { type: 'string', description: 'Move in SAN notation' },
-            fen: { type: 'string' },
-            turn: { type: 'string' },
+            playerMove: { type: 'string', description: 'The human player\'s move in SAN notation' },
+            aiMove: { type: 'string', description: 'The AI opponent\'s automatic response move in SAN notation (null if game over)' },
+            fen: { type: 'string', description: 'Board position after both moves' },
+            turn: { type: 'string', description: 'Whose turn it is next (should be the player\'s again)' },
             isCheck: { type: 'boolean' },
             isCheckmate: { type: 'boolean' },
             isDraw: { type: 'boolean' },
             moveHistory: { type: 'array', items: { type: 'string' } },
+            message: { type: 'string', description: 'Human-readable summary of both moves' },
           },
         },
       },

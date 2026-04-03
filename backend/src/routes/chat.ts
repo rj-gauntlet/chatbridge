@@ -210,14 +210,30 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
       genController.abort()
     }, 60_000)
 
+    // Build app-specific system prompt addon
+    let appSystemAddon = matchedApp
+      ? `\n\nThe user is working with the "${matchedApp.name}" app. Use its tools to help them.`
+      : ''
+
+    if (matchedApp?.slug === 'chess') {
+      appSystemAddon += `
+
+CHESS APP RULES — follow these exactly:
+1. To start a game: call start_game with color="b" if the user wants Black, color="w" for White (default).
+2. To make the player's move: call make_move ONCE with {from, to}. The result will contain BOTH playerMove (the human's move) AND aiMove (the AI opponent's automatic response). NEVER call make_move a second time for the AI — it auto-responds.
+3. Always report both moves to the user: "You played [playerMove], I responded with [aiMove]."
+4. If aiMove is null or missing, the game ended (checkmate or draw) — report the outcome.
+5. If start_game returns aiFirstMove, the AI has already moved — tell the user what the AI played and ask for their response.
+6. Never guess or invent board positions — always use the fen/moveHistory from tool results.
+7. If it is not the player's turn (e.g. after checkmate), do not call make_move — explain the game state instead.`
+    }
+
     const genResult = await generateText({
       model: openai(DEFAULT_MODEL),
-      system: SYSTEM_PROMPT + (matchedApp
-        ? `\n\nThe user is working with the "${matchedApp.name}" app. Use its tools to help them.`
-        : ''),
+      system: SYSTEM_PROMPT + appSystemAddon,
       messages,
       tools: Object.keys(tools).length > 0 ? tools : undefined,
-      maxSteps: 3, // Allow: tool call → tool result → final text response
+      maxSteps: 5, // player move → AI responds → tool result → follow-up → final text
       maxTokens: 1024,
       temperature: 0.7,
       abortSignal: genController.signal,
