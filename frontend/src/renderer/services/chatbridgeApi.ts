@@ -214,5 +214,11 @@ export interface AppRegistration {
 }
 
 export async function listApps(): Promise<AppRegistration[]> {
-  return apiRequest<AppRegistration[]>('/api/apps')
+  const apps = await apiRequest<AppRegistration[]>('/api/apps')
+  // Normalize iframe_url to the actual API_URL — Supabase may have localhost:3001
+  // baked in from dev seeding, but VITE_API_URL is the real backend in production.
+  return apps.map(app => ({
+    ...app,
+    iframe_url: app.iframe_url.replace('http://localhost:3001', API_URL),
+  }))
 }
