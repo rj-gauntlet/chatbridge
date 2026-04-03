@@ -30,6 +30,11 @@ export function sendStateUpdate(state: Record<string, unknown>) {
   sendToParent({ type: 'state_update', appSlug: APP_SLUG, state })
 }
 
+/** Notify the platform that the player made a manual move (drag-and-drop on the board) */
+export function sendManualMove(move: { from: string; to: string; san: string }, state: Record<string, unknown>) {
+  sendToParent({ type: 'manual_move', appSlug: APP_SLUG, move, state })
+}
+
 /** Signal that the app has completed its session */
 export function sendCompletion(summary: string, finalState?: Record<string, unknown>) {
   sendToParent({ type: 'completion', appSlug: APP_SLUG, summary, finalState })

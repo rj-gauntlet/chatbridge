@@ -5,6 +5,7 @@ import {
   initBridge,
   registerTool,
   sendCompletion,
+  sendManualMove,
   sendStateUpdate,
 } from './bridge'
 
@@ -428,7 +429,12 @@ export default function App() {
       const move = chess.move({ from: sourceSquare, to: targetSquare, promotion: 'q' })
       if (!move) return false
       setLastMove({ from: sourceSquare, to: targetSquare })
-      syncState(chess)
+      const newState = syncState(chess)
+      // Notify parent platform that a manual move was made so the AI can comment on it
+      sendManualMove(
+        { from: sourceSquare, to: targetSquare, san: move.san },
+        newState as unknown as Record<string, unknown>,
+      )
       // Trigger AI (fire-and-forget for drag-drop; no need to await)
       if (pc && !chess.isGameOver() && chess.turn() !== pc) {
         triggerAiMove(chess)

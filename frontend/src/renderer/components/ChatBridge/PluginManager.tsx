@@ -24,8 +24,15 @@ const PLATFORM_ORIGIN = window.location.origin
  * - Relay tool invocations from SSE stream to correct iframe
  * - Return tool results back to backend via /api/chat/tool-result
  */
+export interface ManualMoveEvent {
+  appSlug: string
+  move: { from: string; to: string; san: string }
+  boardState: Record<string, unknown>
+}
+
 export function usePluginManager(apiUrl: string, getToken: () => string | null) {
   const [activePlugin, setActivePlugin] = useState<PluginState | null>(null)
+  const [lastManualMove, setLastManualMove] = useState<ManualMoveEvent | null>(null)
   // Ref mirrors the state so closures created before a re-render still read the latest value.
   // This fixes the stale-closure bug where handleToolCallEvent sees activePlugin=null even
   // after openApp() has been called (React re-render hasn't flushed yet).
@@ -40,7 +47,7 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       // Only accept messages from our own origin or the iframe's origin
-      const msg = event.data as { type?: string; appSlug?: string; correlationId?: string; result?: Record<string, unknown>; error?: string; success?: boolean; state?: Record<string, unknown>; summary?: string; finalState?: Record<string, unknown>; code?: string; message?: string }
+      const msg = event.data as { type?: string; appSlug?: string; correlationId?: string; result?: Record<string, unknown>; error?: string; success?: boolean; state?: Record<string, unknown>; move?: { from: string; to: string; san: string }; summary?: string; finalState?: Record<string, unknown>; code?: string; message?: string }
 
       if (!msg?.type) return
 
@@ -82,6 +89,16 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
           setActivePlugin(prev =>
             prev ? { ...prev, lastState: msg.state } : null
           )
+          break
+
+        case 'manual_move':
+          if (msg.appSlug && msg.move && msg.state) {
+            setLastManualMove({
+              appSlug: msg.appSlug,
+              move: msg.move,
+              boardState: msg.state,
+            })
+          }
           break
 
         case 'completion':
@@ -246,6 +263,7 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
     handleToolCallEvent,
     onCompletion,
     onIframeLoad,
+    lastManualMove,
   }
 }
 

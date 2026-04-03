@@ -53,7 +53,7 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
   const [loadingConvs, setLoadingConvs] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const { activePlugin, iframeRef, openApp, closeApp, handleToolCallEvent, onCompletion, onIframeLoad } =
+  const { activePlugin, iframeRef, openApp, closeApp, handleToolCallEvent, onCompletion, onIframeLoad, lastManualMove } =
     usePluginManager(API_URL, getToken)
 
   // Load conversations + apps on mount
@@ -151,6 +151,64 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
       setStreaming(false)
     }
   }, [input, streaming, activeConvId, apps, activePlugin, openApp, handleToolCallEvent])
+
+  /**
+   * Programmatically send a message to the AI without user input.
+   * Used for automatic notifications like manual chess moves.
+   */
+  const autoSendMessage = useCallback(async (text: string, visibleLabel?: string) => {
+    if (streaming) return
+
+    // Show a visible user-side label in the chat (e.g. "♟ e2 → e4")
+    if (visibleLabel) {
+      setMessages(prev => [...prev, { id: `auto-${Date.now()}`, role: 'user', content: visibleLabel }])
+    }
+
+    setStreaming(true)
+    setStreamingContent('')
+    let assistantContent = ''
+
+    try {
+      for await (const event of streamChat(text, activeConvId)) {
+        if (event.type === 'start') {
+          setActiveConvId(event.conversationId)
+        } else if (event.type === 'tool_call') {
+          const e = event as { type: string; appSlug: string; toolName: string; correlationId: string; parameters?: Record<string, unknown> }
+          await handleToolCallEvent(e.appSlug, e.toolName, e.correlationId, e.parameters || {})
+        } else if (event.type === 'delta') {
+          assistantContent += event.content
+          setStreamingContent(assistantContent)
+        } else if (event.type === 'done') {
+          setMessages(prev => [
+            ...prev,
+            { id: event.messageId || `ai-${Date.now()}`, role: 'assistant', content: assistantContent },
+          ])
+          setStreamingContent('')
+          listConversations().then(setConversations).catch(console.error)
+        } else if (event.type === 'error') {
+          setMessages(prev => [...prev, { id: `err-${Date.now()}`, role: 'assistant', content: `⚠️ ${event.message}` }])
+          setStreamingContent('')
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Connection error'
+      setMessages(prev => [...prev, { id: `err-${Date.now()}`, role: 'assistant', content: `⚠️ ${msg}` }])
+      setStreamingContent('')
+    } finally {
+      setStreaming(false)
+    }
+  }, [streaming, activeConvId, handleToolCallEvent])
+
+  // When a manual board move is detected, notify the AI automatically
+  useEffect(() => {
+    if (!lastManualMove) return
+    const { move, boardState } = lastManualMove
+    const history = Array.isArray(boardState.moveHistory) ? (boardState.moveHistory as string[]).join(' ') : ''
+    const prompt = `The player manually moved a piece on the board: ${move.san} (${move.from} → ${move.to}). Current board FEN: ${boardState.fen}. Full move history: ${history || 'none'}. Please acknowledge this move and continue the game.`
+    const label = `♟ Manual move: ${move.san}`
+    autoSendMessage(prompt, label)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastManualMove])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
