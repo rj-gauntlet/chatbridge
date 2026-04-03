@@ -215,9 +215,16 @@ export default function App() {
   const queueRef = useRef<Track[]>([])
   const volumeRef = useRef(80)
   const pendingPlayRef = useRef<Track | null>(null)
+  const currentTrackRef = useRef<Track | null>(null)
+  const connectedRef = useRef(false)
+  const wasPlayingRef = useRef(false)
+  // Forward ref to break circular dep between advanceQueue ↔ playTrackDirect
+  const playTrackDirectRef = useRef<(t: Track) => Promise<'sdk' | 'preview' | 'error'>>(async () => 'error' as const)
 
   useEffect(() => { queueRef.current = queue }, [queue])
   useEffect(() => { volumeRef.current = volume }, [volume])
+  useEffect(() => { currentTrackRef.current = currentTrack }, [currentTrack])
+  useEffect(() => { connectedRef.current = connected }, [connected])
 
   // ── Connect polling ───────────────────────────────────────────────────────
 
@@ -231,11 +238,24 @@ export default function App() {
       try {
         const state = await apiFetch('/api/oauth/spotify/player')
         if (!state) return
+
+        // Detect song end in Connect mode → auto-advance our queue
+        if (wasPlayingRef.current && !state.is_playing && queueRef.current.length > 0) {
+          wasPlayingRef.current = false
+          const [next, ...rest] = queueRef.current
+          queueRef.current = rest
+          setQueue(rest)
+          const finished = currentTrackRef.current
+          if (finished) setPlayed(prev => [finished, ...prev.filter(p => p.id !== finished.id)].slice(0, 30))
+          playTrackDirectRef.current(next).catch(() => {})
+          return
+        }
+        wasPlayingRef.current = state.is_playing
+
         if (state.track) {
           setCurrentTrack(prev => {
             const t = state.track as { name: string; artist: string; album: string; albumArt: string; uri: string }
             if (!prev) return prev
-            // Always sync track data from server in connect mode (keeps album art current)
             return {
               ...prev,
               name: t.name || prev.name,
@@ -276,22 +296,18 @@ export default function App() {
   // ── Queue advance ─────────────────────────────────────────────────────────
 
   const advanceQueue = useCallback(() => {
+    // Add finished track to history
+    const finished = currentTrackRef.current
+    if (finished) setPlayed(prev => [finished, ...prev.filter(p => p.id !== finished.id)].slice(0, 30))
+
     const q = queueRef.current
     if (q.length === 0) { setIsPlaying(false); clearProgressTimer(); return }
     const [next, ...rest] = q
     queueRef.current = rest
     setQueue(rest)
-    const audio = audioRef.current
-    if (audio && next.previewUrl) {
-      audio.src = next.previewUrl
-      audio.currentTime = 0
-      audio.play().catch(() => {})
-      setCurrentTrack(next)
-      setIsPlaying(true)
-      setProgress(0)
-      startProgressTimer()
-    }
-  }, [clearProgressTimer, startProgressTimer])
+    // Use ref to avoid circular dep — playTrackDirect handles both preview & Connect mode
+    playTrackDirectRef.current(next).catch(() => {})
+  }, [clearProgressTimer])
 
   // ── Core play ─────────────────────────────────────────────────────────────
 
@@ -349,6 +365,9 @@ export default function App() {
       return 'error'
     }
   }, [advanceQueue, startProgressTimer, startConnectPoll])
+
+  // Keep the forward ref in sync so advanceQueue can call playTrackDirect without circular dep
+  useEffect(() => { playTrackDirectRef.current = playTrackDirect }, [playTrackDirect])
 
   // ── SDK init ──────────────────────────────────────────────────────────────
 
@@ -540,7 +559,7 @@ export default function App() {
     setVolume(level)
     playerRef.current?.setVolume(level / 100).catch(() => {})
     if (audioRef.current) audioRef.current.volume = level / 100
-    if (connectModeRef.current) {
+    if (connectedRef.current) {
       apiFetch('/api/oauth/spotify/volume', {
         method: 'PUT',
         body: JSON.stringify({ volume_percent: level }),
