@@ -582,6 +582,10 @@ router.get('/spotify/albumart', async (req, res, next) => {
     res.setHeader('Content-Type', contentType)
     res.setHeader('Cache-Control', 'public, max-age=86400')
     res.setHeader('Access-Control-Allow-Origin', '*')
+    // Helmet sets Cross-Origin-Resource-Policy: same-origin by default, which blocks
+    // img tags from loading this resource in cross-origin documents (including sandboxed
+    // iframes whose effective origin is null). Override to allow any origin to display it.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
     const buffer = await imgRes.arrayBuffer()
     res.send(Buffer.from(buffer))
   } catch (err) { next(err) }
