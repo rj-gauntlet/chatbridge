@@ -359,6 +359,69 @@ router.post('/spotify/playlist', requireAuth, async (req: AuthenticatedRequest, 
 })
 
 /**
+ * GET /api/oauth/spotify/devices
+ * List user's available Spotify Connect devices
+ */
+router.get('/spotify/devices', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { data: appReg } = await supabaseAdmin
+      .from('app_registrations').select('id').eq('slug', 'spotify').single()
+    if (!appReg) throw createError('Spotify app not registered', 404)
+
+    const token = await getSpotifyToken(req.userId!, appReg.id)
+    if (!token) return res.json({ devices: [] })
+
+    const spotifyRes = await fetch('https://api.spotify.com/v1/me/player/devices', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!spotifyRes.ok) return res.json({ devices: [] })
+
+    const data = await spotifyRes.json() as {
+      devices: Array<{ id: string; name: string; type: string; is_active: boolean; volume_percent: number }>
+    }
+    res.json({ devices: data.devices || [] })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * PUT /api/oauth/spotify/play
+ * Send play command to a specific device
+ */
+router.put('/spotify/play', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { uri, deviceId } = req.body as { uri: string; deviceId?: string }
+    if (!uri) throw createError('uri required', 400)
+
+    const { data: appReg } = await supabaseAdmin
+      .from('app_registrations').select('id').eq('slug', 'spotify').single()
+    if (!appReg) throw createError('Spotify app not registered', 404)
+
+    const token = await getSpotifyToken(req.userId!, appReg.id)
+    if (!token) throw createError('Not connected to Spotify', 401)
+
+    const url = deviceId
+      ? `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`
+      : 'https://api.spotify.com/v1/me/player/play'
+
+    const spotifyRes = await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uris: [uri] }),
+    })
+
+    if (spotifyRes.ok || spotifyRes.status === 204) {
+      return res.json({ success: true })
+    }
+    const errBody = await spotifyRes.text()
+    res.status(spotifyRes.status).json({ success: false, error: errBody })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
  * GET /api/oauth/spotify/playlists
  * Get user's Spotify playlists
  */

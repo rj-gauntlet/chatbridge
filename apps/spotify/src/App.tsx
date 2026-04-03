@@ -162,29 +162,29 @@ export default function App() {
   // ── Playback core: try SDK then preview ───────────────────────────────────
 
   const playTrackDirect = useCallback(async (track: Track): Promise<'sdk' | 'preview' | 'error'> => {
-    // Try Spotify Web API (works for Premium on any active device — browser SDK or external)
+    // Try Spotify Connect — fetch available devices, pick one, send explicit play command
     try {
-      const tokenData = await apiFetch('/api/oauth/spotify/token')
-      if (tokenData.token && tokenData.token !== 'mock-spotify-token') {
-        // Build play URL — use SDK device_id if available, otherwise let Spotify pick active device
-        const playUrl = deviceIdRef.current
-          ? `https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`
-          : 'https://api.spotify.com/v1/me/player/play'
-        const resp = await fetch(playUrl, {
+      // Pick device: SDK device first, then first available Connect device
+      let targetDeviceId: string | undefined = deviceIdRef.current ?? undefined
+      if (!targetDeviceId) {
+        const devData = await apiFetch('/api/oauth/spotify/devices')
+        const devices: Array<{ id: string; name: string; is_active: boolean }> = devData.devices || []
+        // Prefer active device, fall back to first available
+        const active = devices.find(d => d.is_active) || devices[0]
+        if (active) targetDeviceId = active.id
+      }
+
+      if (targetDeviceId) {
+        const result = await apiFetch('/api/oauth/spotify/play', {
           method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${tokenData.token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ uris: [track.uri] }),
+          body: JSON.stringify({ uri: track.uri, deviceId: targetDeviceId }),
         })
-        if (resp.ok || resp.status === 204) {
+        if (result.success) {
           setCurrentTrack(track)
           setIsPlaying(true)
           setProgress(0)
           return 'sdk'
         }
-        // 404 = no active device, 403 = not Premium → fall through to preview
       }
     } catch {
       // Fall through to preview
