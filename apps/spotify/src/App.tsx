@@ -416,22 +416,35 @@ export default function App() {
       clearProgressTimer()
     }
 
-    const mode = await playTrackDirect(track)
-    if (mode === 'error' && !pendingPlayRef.current) {
-      return { success: false, error: 'No preview available for this track — connect Spotify Premium for full playback' }
+    // Try each track in search results until one plays successfully
+    // (Spotify has deprecated preview_url for many tracks — fallback through the list)
+    let playedTrack: Track | null = null
+    let mode: 'sdk' | 'preview' | 'error' = 'error'
+    for (const candidate of tracks) {
+      mode = await playTrackDirect(candidate)
+      if (mode !== 'error' || pendingPlayRef.current) {
+        playedTrack = candidate
+        break
+      }
     }
 
-    sendStateUpdate({ playing: track.name, artist: track.artist, mode })
+    if (!playedTrack || (mode === 'error' && !pendingPlayRef.current)) {
+      setStatusMsg('⚠️ No previews available — Spotify Premium needed for full playback')
+      return { success: false, error: 'No preview available for any matching track — Spotify Premium required for full playback' }
+    }
+
+    const t = playedTrack
+    sendStateUpdate({ playing: t.name, artist: t.artist, mode })
     return {
       success: mode !== 'error',
-      track: track.name,
-      artist: track.artist,
-      album: track.album,
+      track: t.name,
+      artist: t.artist,
+      album: t.album,
       mode,
       message: mode === 'sdk'
-        ? `Now playing: ${track.name} by ${track.artist}`
+        ? `Now playing: ${t.name} by ${t.artist}`
         : mode === 'preview'
-          ? `Playing 30-second preview: ${track.name} by ${track.artist}`
+          ? `Playing 30-second preview: ${t.name} by ${t.artist}`
           : 'Track found but needs audio permission — tap the player to start',
     }
   }, [clearProgressTimer, playTrackDirect])
