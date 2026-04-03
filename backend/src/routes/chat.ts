@@ -220,12 +220,14 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
 
 CHESS APP RULES — follow these exactly:
 1. To start a game: call start_game with color="b" if the user wants Black, color="w" for White (default).
-2. To make the player's move: call make_move ONCE with {from, to}. The result will contain BOTH playerMove (the human's move) AND aiMove (the AI opponent's automatic response). NEVER call make_move a second time for the AI — it auto-responds.
-3. Always report both moves to the user: "You played [playerMove], I responded with [aiMove]."
-4. If aiMove is null or missing, the game ended (checkmate or draw) — report the outcome.
-5. If start_game returns aiFirstMove, the AI has already moved — tell the user what the AI played and ask for their response.
-6. Never guess or invent board positions — always use the fen/moveHistory from tool results.
-7. If it is not the player's turn (e.g. after checkmate), do not call make_move — explain the game state instead.`
+2. CRITICAL — When the user specifies ANY move (e.g. "e4", "nf6", "Nf6", "knight to f6", "ng4", "castle", etc.) you MUST call make_move with the correct {from, to} squares BEFORE saying anything. Never narrate a move without calling make_move first. If you are unsure of the piece's current square, call get_board_state first to find it.
+3. make_move takes algebraic square coordinates (e.g. from:"g8", to:"f6" for Nf6). Convert SAN notation to from/to: use the current board state to find which piece is on which square.
+4. make_move returns BOTH playerMove AND aiMove — report both: "You played [playerMove], I responded with [aiMove]."
+5. If aiMove is null or missing, the game ended — report the outcome.
+6. If start_game returns aiFirstMove, tell the user what the AI played and ask for their move.
+7. Never guess board positions — always derive from/to from the fen or moveHistory in tool results.
+8. If it is not the player's turn (checkmate/draw), do not call make_move — explain the game state.
+9. NEVER say "You played X" or "I will respond with Y" without having called make_move first. The tool call is mandatory for every move.`
     }
 
     if (matchedApp?.slug === 'desmos') {
