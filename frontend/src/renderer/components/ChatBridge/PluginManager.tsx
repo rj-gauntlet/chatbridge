@@ -278,7 +278,9 @@ export function PluginFrame({ plugin, iframeRef, onClose, onLoad }: PluginFrameP
         ref={iframeRef as React.RefObject<HTMLIFrameElement>}
         src={plugin.iframeUrl}
         // Security: allow-scripts only (no allow-same-origin — prevents DOM access to parent)
-        sandbox="allow-scripts allow-forms allow-popups"
+        // allow-popups-to-escape-sandbox: OAuth popups need to escape sandbox so they can
+        // access cookies/localStorage on accounts.spotify.com (needed to render login form)
+        sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
         onLoad={onLoad}
         style={{
           width: '100%',
