@@ -31,11 +31,12 @@ router.get('/:app/authorize', requireAuth, async (req: AuthenticatedRequest, res
     if (!config) throw createError('App has no OAuth config', 500)
 
     const redirectUri = process.env.SPOTIFY_REDIRECT_URI || process.env.SPOTIFY_REDIRECT_URL || `${req.protocol}://${req.get('host')}/api/oauth/${app}/callback`
-
-    console.log('[oauth] authorize redirect_uri:', redirectUri)
+    // Always prefer env var for client_id — DB value may be stale if seed ran without env var set
+    const clientId = (app === 'spotify' ? process.env.SPOTIFY_CLIENT_ID : null) || config.client_id
+    console.log('[oauth] authorize app:', app, 'client_id:', clientId?.slice(0, 8), 'redirect_uri:', redirectUri)
     const params = new URLSearchParams({
       response_type: 'code',
-      client_id: config.client_id,
+      client_id: clientId,
       scope: config.scopes.join(' '),
       redirect_uri: redirectUri,
       state: `${req.userId}|${app}`,
