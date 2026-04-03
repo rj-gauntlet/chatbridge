@@ -13,8 +13,12 @@ let allowedOrigin: string | null = null
 let chatbridgeToken = ''
 let chatbridgeApiUrl = ''
 
+// Explicit content filter — toggled from the parent chat UI
+let explicitFilterEnabled = false
+
 export function getToken(): string { return chatbridgeToken }
 export function getApiUrl(): string { return chatbridgeApiUrl || 'http://localhost:3001' }
+export function getExplicitFilter(): boolean { return explicitFilterEnabled }
 
 export function registerTool(name: string, handler: ToolHandler) {
   handlers.set(name, handler)
@@ -52,6 +56,12 @@ export function initBridge(trustedOrigin?: string) {
       const m = msg as unknown as { type: string; token?: string; apiUrl?: string }
       chatbridgeToken = m.token || ''
       chatbridgeApiUrl = m.apiUrl || ''
+      return
+    }
+
+    if (msg.type === 'explicit_filter') {
+      const m = msg as unknown as { type: string; enabled: boolean }
+      explicitFilterEnabled = m.enabled
       return
     }
 

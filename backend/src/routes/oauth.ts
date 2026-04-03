@@ -285,6 +285,7 @@ router.get('/spotify/search', requireAuth, async (req: AuthenticatedRequest, res
       previewUrl: t.preview_url,
       uri: t.uri,
       albumArt: t.album.images[0]?.url ?? '',
+      explicit: t.explicit ?? false,
     }))
 
     res.json({ tracks })

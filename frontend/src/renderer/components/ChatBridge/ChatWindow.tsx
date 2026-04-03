@@ -14,7 +14,7 @@ import {
   Textarea,
   Title,
 } from '@mantine/core'
-import { IconSend, IconTrash } from '@tabler/icons-react'
+import { IconSend, IconTrash, IconExplicit, IconExplicitOff } from '@tabler/icons-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { streamChat, listConversations, getConversation, deleteConversation, listApps, type Conversation, type AppRegistration } from '../../services/chatbridgeApi'
 import { PluginFrame, usePluginManager } from './PluginManager'
@@ -55,6 +55,16 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
 
   const { activePlugin, iframeRef, openApp, closeApp, handleToolCallEvent, onCompletion, onIframeLoad, lastManualMove } =
     usePluginManager(API_URL, getToken)
+
+  // Explicit content filter — lives at chat level, enforced in Spotify iframe
+  const [explicitFilter, setExplicitFilter] = useState(false)
+
+  // Keep Spotify iframe in sync whenever the filter changes or Spotify becomes active
+  useEffect(() => {
+    if (activePlugin?.appSlug === 'spotify' && activePlugin.status === 'ready') {
+      iframeRef.current?.contentWindow?.postMessage({ type: 'explicit_filter', enabled: explicitFilter }, '*')
+    }
+  }, [explicitFilter, activePlugin, iframeRef])
 
   // Load conversations + apps on mount
   useEffect(() => {
@@ -375,6 +385,39 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
               flexShrink: 0,
             }}
           >
+            {/* Spotify explicit filter toggle — chat-level setting */}
+            {activePlugin.appSlug === 'spotify' && (
+              <Box
+                px="md"
+                py="xs"
+                style={{
+                  borderBottom: '1px solid var(--mantine-color-gray-2)',
+                  background: 'var(--mantine-color-gray-0)',
+                  flexShrink: 0,
+                }}
+              >
+                <Group justify="space-between" align="center">
+                  <Group gap="xs">
+                    {explicitFilter
+                      ? <IconExplicitOff size={16} color="var(--mantine-color-red-6)" />
+                      : <IconExplicit size={16} color="var(--mantine-color-gray-5)" />
+                    }
+                    <Text size="xs" fw={500} c={explicitFilter ? 'red.6' : 'dimmed'}>
+                      {explicitFilter ? 'Explicit filter ON' : 'Explicit filter OFF'}
+                    </Text>
+                  </Group>
+                  <ActionIcon
+                    size="sm"
+                    variant={explicitFilter ? 'filled' : 'subtle'}
+                    color={explicitFilter ? 'red' : 'gray'}
+                    onClick={() => setExplicitFilter(f => !f)}
+                    title="Toggle explicit content filter"
+                  >
+                    {explicitFilter ? <IconExplicitOff size={14} /> : <IconExplicit size={14} />}
+                  </ActionIcon>
+                </Group>
+              </Box>
+            )}
             <PluginFrame plugin={activePlugin} iframeRef={iframeRef} onClose={closeApp} onLoad={onIframeLoad} />
           </Box>
         )}

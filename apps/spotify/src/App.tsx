@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getApiUrl, getToken, initBridge, registerTool, sendStateUpdate } from './bridge'
+import { getApiUrl, getExplicitFilter, getToken, initBridge, registerTool, sendStateUpdate } from './bridge'
 
 // ── Spotify Web Playback SDK type declarations ─────────────────────────────
 
@@ -54,6 +54,7 @@ interface Track {
   albumArt: string
   previewUrl: string | null
   uri: string
+  explicit?: boolean
 }
 
 type AppView = 'disconnected' | 'connecting' | 'player'
@@ -498,6 +499,19 @@ export default function App() {
     const tracks = (data.tracks || []) as Track[]
     if (tracks.length === 0) { setStatusMsg(`No results for "${query}"`); return { success: false, error: 'No tracks found' } }
     const track = tracks[0]
+
+    // Explicit content filter — block before any playback attempt
+    if (getExplicitFilter() && track.explicit) {
+      setStatusMsg(`🚫 "${track.name}" is explicit — blocked by content filter`)
+      return {
+        success: false,
+        blocked: 'explicit',
+        track: track.name,
+        artist: track.artist,
+        message: `"${track.name}" by ${track.artist} contains explicit content and cannot be played while the explicit filter is enabled.`,
+      }
+    }
+
     if (data.needsReconnect) {
       setConnected(false); setView('disconnected')
       setStatusMsg('🔑 Spotify session expired — tap "Connect Spotify" to reconnect')
@@ -591,6 +605,18 @@ export default function App() {
     } catch { return { success: false, error: 'Search failed' } }
     if (!data.tracks?.length) return { success: false, error: 'No results' }
     const track = data.tracks[0]
+
+    // Explicit content filter
+    if (getExplicitFilter() && track.explicit) {
+      return {
+        success: false,
+        blocked: 'explicit',
+        track: track.name,
+        artist: track.artist,
+        message: `"${track.name}" by ${track.artist} contains explicit content and cannot be queued while the explicit filter is enabled.`,
+      }
+    }
+
     const newQueue = [...queueRef.current, track]
     queueRef.current = newQueue
     setQueue(newQueue)
