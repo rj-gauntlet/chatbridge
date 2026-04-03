@@ -623,7 +623,7 @@ export default function App() {
   }
 
   const elapsed = duration * progress
-  const albumArtUrl = currentTrack?.albumArt ? proxyAlbumArt(currentTrack.albumArt) : ''
+  const albumArtUrl = currentTrack?.albumArt ?? ''
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -861,7 +861,7 @@ export default function App() {
                   <span style={{ fontSize: 11, color: DIM2, width: 16, textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
                   {t.albumArt && (
                     <img
-                      src={proxyAlbumArt(t.albumArt)}
+                      src={t.albumArt}
                       alt=""
                       style={{ width: 36, height: 36, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}

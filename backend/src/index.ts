@@ -74,7 +74,7 @@ app.use('/apps', express.static(path.join(process.cwd(), 'public/apps'), {
     res.setHeader('X-Frame-Options', 'ALLOWALL')
     res.setHeader(
       'Content-Security-Policy',
-      `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co; connect-src 'self' https://api.spotify.com https://accounts.spotify.com ${FRONTEND_URL} ${VERCEL_URL}; frame-ancestors 'self' ${FRONTEND_URL} ${VERCEL_URL} http://localhost:5173 http://localhost:1212`,
+      `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co; connect-src 'self' https://api.spotify.com https://accounts.spotify.com ${FRONTEND_URL} ${VERCEL_URL}; img-src * data: blob:; frame-ancestors 'self' ${FRONTEND_URL} ${VERCEL_URL} http://localhost:5173 http://localhost:1212`,
     )
   },
 }))
