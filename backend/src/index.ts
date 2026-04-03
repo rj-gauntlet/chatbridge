@@ -23,8 +23,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://sdk.scdn.co'],
-      connectSrc: ["'self'", 'https://api.spotify.com', 'https://accounts.spotify.com', FRONTEND_URL],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://sdk.scdn.co', 'https://www.desmos.com'],
+      connectSrc: ["'self'", 'https://api.spotify.com', 'https://accounts.spotify.com', 'https://www.desmos.com', FRONTEND_URL],
       frameAncestors: ["'self'", FRONTEND_URL, VERCEL_URL, 'http://localhost:5173', 'http://localhost:1212'],
     },
   },
@@ -79,7 +79,7 @@ app.use('/apps', express.static(path.join(process.cwd(), 'public/apps'), {
     res.setHeader('X-Frame-Options', 'ALLOWALL')
     res.setHeader(
       'Content-Security-Policy',
-      `default-src 'self' http://localhost:3001; script-src 'self' http://localhost:3001 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co; connect-src 'self' http://localhost:3001 https://api.spotify.com https://accounts.spotify.com ${FRONTEND_URL} ${VERCEL_URL}; img-src * data: blob:; frame-ancestors 'self' ${FRONTEND_URL} ${VERCEL_URL} http://localhost:5173 http://localhost:1212`,
+      `default-src 'self' http://localhost:3001; script-src 'self' http://localhost:3001 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co https://www.desmos.com; connect-src 'self' http://localhost:3001 https://api.spotify.com https://accounts.spotify.com https://www.desmos.com ${FRONTEND_URL} ${VERCEL_URL}; img-src * data: blob:; frame-ancestors 'self' ${FRONTEND_URL} ${VERCEL_URL} http://localhost:5173 http://localhost:1212`,
     )
   },
 }))

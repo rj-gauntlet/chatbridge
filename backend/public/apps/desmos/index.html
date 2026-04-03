@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Desmos — ChatBridge App</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; }
+    </style>
+    <!-- Desmos API loaded from CDN before React bundle -->
+    <script src="https://www.desmos.com/api/v1.7/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6"></script>
+    <!-- IIFE bundle — no type="module" (blocked in sandboxed iframes without allow-same-origin) -->
+    <script src="./index.js" defer></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

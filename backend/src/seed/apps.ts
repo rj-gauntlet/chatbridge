@@ -348,6 +348,119 @@ const apps = [
       },
     ],
   },
+  // ── Desmos Graphing Calculator ─────────────────────────────────────────────
+  {
+    name: 'Desmos Graphing Calculator',
+    slug: 'desmos',
+    description: 'Interactive Desmos graphing calculator. Plots mathematical functions, equations, inequalities, and parametric curves. Use when the user wants to graph a function, visualize an equation, explore mathematical curves, or plot data.',
+    icon_url: '📈',
+    iframe_url: `${APPS_BASE}/desmos/index.html`,
+    auth_type: 'internal',
+    status: 'active',
+    tools: [
+      {
+        name: 'add_expression',
+        description: 'Add or update a mathematical expression on the Desmos graph. Supports functions (y=x^2), equations (x^2+y^2=25), inequalities (y>x), parametric curves, and constants. Use LaTeX notation. Optionally specify an id to update an existing expression.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            latex: { type: 'string', description: 'LaTeX math expression to graph (e.g. "y=x^2", "x^2+y^2=25", "y>\\sin(x)")' },
+            id: { type: 'string', description: 'Optional identifier. Omit to auto-generate. Reuse the same id to update an existing expression.' },
+            color: { type: 'string', description: 'Optional hex color for the graph line (e.g. "#c74440")' },
+          },
+          required: ['latex'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            id: { type: 'string', description: 'The expression id — use this to remove or update it later' },
+            latex: { type: 'string' },
+            expressionCount: { type: 'number' },
+            message: { type: 'string' },
+          },
+        },
+      },
+      {
+        name: 'remove_expression',
+        description: 'Remove a specific expression from the graph by its id. Call get_expressions first if you do not know the id.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'The expression id to remove' },
+          },
+          required: ['id'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            removedId: { type: 'string' },
+            expressionCount: { type: 'number' },
+            message: { type: 'string' },
+          },
+        },
+      },
+      {
+        name: 'set_viewport',
+        description: 'Set the visible x/y bounds of the graph window. Use to zoom in on a region or show a wider range.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            left:   { type: 'number', description: 'Left x bound (e.g. -10)' },
+            right:  { type: 'number', description: 'Right x bound (e.g. 10)' },
+            bottom: { type: 'number', description: 'Bottom y bound (e.g. -10)' },
+            top:    { type: 'number', description: 'Top y bound (e.g. 10)' },
+          },
+          required: ['left', 'right', 'bottom', 'top'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            viewport: { type: 'object' },
+            message: { type: 'string' },
+          },
+        },
+      },
+      {
+        name: 'clear_graph',
+        description: 'Remove all expressions from the graph, returning it to a blank state.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+          },
+        },
+      },
+      {
+        name: 'get_expressions',
+        description: 'Get the current list of all expressions on the graph including their ids and LaTeX. Use before making changes if you are unsure what is currently graphed.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            expressions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  latex: { type: 'string' },
+                  color: { type: 'string' },
+                  hidden: { type: 'boolean' },
+                },
+              },
+            },
+            expressionCount: { type: 'number' },
+          },
+        },
+      },
+    ],
+  },
 ]
 
 async function seed() {

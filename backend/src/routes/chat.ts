@@ -228,6 +228,21 @@ CHESS APP RULES — follow these exactly:
 7. If it is not the player's turn (e.g. after checkmate), do not call make_move — explain the game state instead.`
     }
 
+    if (matchedApp?.slug === 'desmos') {
+      appSystemAddon += `
+
+DESMOS GRAPHING CALCULATOR RULES — follow these exactly:
+1. Use add_expression to plot functions, equations, and inequalities. Always use LaTeX notation (e.g. "y=x^2", "y=\\\\sin(x)", "x^2+y^2=r^2").
+2. Every add_expression call returns an "id". Store and reuse these ids if you need to remove or update a specific expression later.
+3. To update an expression, call add_expression with the same id and the new latex — do not remove and re-add unless the user asked to replace.
+4. Call get_expressions before removing if you are unsure of current ids on the graph.
+5. Use set_viewport to frame a region of interest (e.g. when graphing y=e^x, set right:5, top:100).
+6. Use clear_graph only when the user asks to start fresh or clear everything.
+7. When graphing a family of curves, add them in separate add_expression calls so each gets its own color.
+8. Never invent results — only describe what the tool returns. If the user asks what is graphed, call get_expressions first.
+9. LaTeX reminder: use backslash commands: \\\\sin, \\\\cos, \\\\sqrt{x}, \\\\frac{a}{b}, \\\\pi, \\\\theta.`
+    }
+
     const genResult = await generateText({
       model: openai(DEFAULT_MODEL),
       system: SYSTEM_PROMPT + appSystemAddon,
