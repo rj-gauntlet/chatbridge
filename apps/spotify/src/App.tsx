@@ -388,8 +388,15 @@ export default function App() {
       const player = new window.Spotify.Player({
         name: 'ChatBridge Player',
         getOAuthToken: async (cb) => {
-          try { const d = await apiFetch('/api/oauth/spotify/token'); cb(d.token) }
-          catch { cb(spotifyToken!) }
+          setStatusMsg('[dbg] getOAuthToken called')
+          try {
+            const d = await apiFetch('/api/oauth/spotify/token')
+            setStatusMsg(`[dbg] getOAuthToken:ok,tok:${d.token ? d.token.slice(0,8) : 'null'}`)
+            cb(d.token)
+          } catch (e) {
+            setStatusMsg(`[dbg] getOAuthToken:err,using fallback`)
+            cb(spotifyToken!)
+          }
         },
         volume: volumeRef.current / 100,
       })
@@ -413,9 +420,15 @@ export default function App() {
         console.error('[Spotify SDK] initialization_error:', message)
         setStatusMsg(`⚠️ SDK init failed: ${message}`)
       })
-      player.connect().then((success: boolean) => {
-        console.log('[Spotify SDK] connect() result:', success)
-        if (!success) setStatusMsg('⚠️ SDK connect() returned false — check CSP or token scopes.')
+      // Wrap connect() with a 12-second timeout so we can see if it never resolves
+      const connectPromise = player.connect()
+      const timeoutPromise = new Promise<boolean>(resolve => setTimeout(() => resolve(false), 12000))
+      Promise.race([connectPromise, timeoutPromise]).then((success: boolean) => {
+        if (!success) {
+          setStatusMsg('[dbg] connect():false or timed-out after 12s')
+        } else {
+          setStatusMsg('[dbg] connect():true — waiting for ready event')
+        }
       })
       player.addListener('player_state_changed', (state: SpotifyPlaybackState | null) => {
         if (!state) return
