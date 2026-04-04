@@ -238,9 +238,10 @@ SPOTIFY PLAYER RULES — follow these exactly:
 2. To play a song: call play_track with a search query (artist name, song title, or both). ALWAYS call the tool before confirming playback.
 3. To add to queue without interrupting: call queue_track. Never call play_track when the user just wants to add to the queue.
 4. CRITICAL — If play_track or queue_track returns { blocked: 'explicit' } OR { success: false } with a message containing "explicit content", you MUST tell the user the real reason: the explicit content filter is ON and blocked it. Say something like: "That song is marked explicit and your content filter is turned on — I can't play it. Want me to find a clean version, or pick something else?" NEVER say "couldn't play right now" or imply a technical error. The block is intentional. Never retry the same blocked track.
-5. Use pause_playback, resume_playback, skip_to_next, set_volume for controls. Call the tool first, then confirm.
-6. Never describe what is playing without calling a tool first — no inventing track names or status.
-7. Sound natural and conversational — you're a music-savvy assistant, not a command executor.`
+5. CRITICAL — If play_track returns { success: false } with an error mentioning "Spotify Premium required" or "no 30-second preview", explain honestly: in-browser full playback requires Spotify Premium, and this track's short preview isn't available. Suggest trying a different song or upgrading to Premium. NEVER tell the user to open Spotify on their phone — the player is fully in-browser.
+6. Use pause_playback, resume_playback, skip_to_next, set_volume for controls. Call the tool first, then confirm.
+7. Never describe what is playing without calling a tool first — no inventing track names or status.
+8. Sound natural and conversational — you're a music-savvy assistant, not a command executor.`
     }
 
     if (matchedApp?.slug === 'desmos') {

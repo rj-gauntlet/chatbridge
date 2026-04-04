@@ -53,13 +53,28 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
   const [loadingConvs, setLoadingConvs] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const { activePlugin, iframeRef, openApp, closeApp, handleToolCallEvent, onCompletion, onIframeLoad, lastManualMove } =
-    usePluginManager(API_URL, getToken)
-
   // Explicit content filter — lives at chat level, enforced in Spotify iframe
   const [explicitFilter, setExplicitFilter] = useState(false)
+  // Ref mirrors the state so callbacks (e.g. onPluginReady) always read the current value
+  // without stale closures — avoids the race where tool_invoke beats the React re-render.
+  const explicitFilterRef = useRef(false)
+  useEffect(() => { explicitFilterRef.current = explicitFilter }, [explicitFilter])
 
-  // Keep Spotify iframe in sync whenever the filter changes or Spotify becomes active
+  /**
+   * Called by PluginManager synchronously when the iframe's bridge signals ready,
+   * BEFORE any pending tool invocations are flushed.  Sending explicit_filter here
+   * guarantees the filter state arrives at the bridge before play_track runs.
+   */
+  const handlePluginReady = useCallback((appSlug: string, iframeWindow: Window) => {
+    if (appSlug === 'spotify') {
+      iframeWindow.postMessage({ type: 'explicit_filter', enabled: explicitFilterRef.current }, '*')
+    }
+  }, []) // no deps — reads from ref, always current
+
+  const { activePlugin, iframeRef, openApp, closeApp, handleToolCallEvent, onCompletion, onIframeLoad, lastManualMove } =
+    usePluginManager(API_URL, getToken, handlePluginReady)
+
+  // Also sync filter state whenever the user toggles it while Spotify is already open
   useEffect(() => {
     if (activePlugin?.appSlug === 'spotify' && activePlugin.status === 'ready') {
       iframeRef.current?.contentWindow?.postMessage({ type: 'explicit_filter', enabled: explicitFilter }, '*')
@@ -102,6 +117,7 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
     setActiveConvId(undefined)
     setMessages([])
     setInput('')
+    setExplicitFilter(false)
     closeApp()
   }, [closeApp])
 

@@ -30,7 +30,11 @@ export interface ManualMoveEvent {
   boardState: Record<string, unknown>
 }
 
-export function usePluginManager(apiUrl: string, getToken: () => string | null) {
+export function usePluginManager(
+  apiUrl: string,
+  getToken: () => string | null,
+  onPluginReady?: (appSlug: string, iframeWindow: Window) => void,
+) {
   const [activePlugin, setActivePlugin] = useState<PluginState | null>(null)
   const [lastManualMove, setLastManualMove] = useState<ManualMoveEvent | null>(null)
   // Ref mirrors the state so closures created before a re-render still read the latest value.
@@ -42,6 +46,10 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
   const completionCallbacks = useRef<Array<(summary: string, state?: Record<string, unknown>) => void>>([])
   // Resolvers waiting for the iframe to signal 'ready' before tool invocations can proceed.
   const readyWaiters = useRef<Array<() => void>>([])
+  // Ref so the message-listener closure (registered once with [] deps) always calls the
+  // latest version of onPluginReady without needing to re-register the listener.
+  const onPluginReadyRef = useRef(onPluginReady)
+  useEffect(() => { onPluginReadyRef.current = onPluginReady }, [onPluginReady])
 
   // Listen for postMessages from iframes
   useEffect(() => {
@@ -64,6 +72,11 @@ export function usePluginManager(apiUrl: string, getToken: () => string | null) 
               { type: 'auth_token', token: getToken(), apiUrl },
               '*',
             )
+            // Let the caller send any app-specific init messages (e.g. explicit_filter for Spotify)
+            // BEFORE flushing waiters so those messages arrive before any tool_invoke.
+            if (onPluginReadyRef.current && readyPlugin) {
+              onPluginReadyRef.current(readyPlugin.appSlug, iframeRef.current.contentWindow)
+            }
           }
           // Flush any tool invocations that were queued before the iframe was ready
           const waiters = readyWaiters.current.splice(0)

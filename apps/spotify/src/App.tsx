@@ -525,8 +525,11 @@ export default function App() {
       if (mode !== 'error' || pendingPlayRef.current) { playedTrack = candidate; break }
     }
     if (!playedTrack || (mode === 'error' && !pendingPlayRef.current)) {
-      setStatusMsg('⚠️ Open Spotify on your phone or computer, then try again')
-      return { success: false, error: 'Could not play — make sure Spotify is open on one of your devices, then try again' }
+      setStatusMsg('⚠️ Spotify Premium required for in-browser playback. 30-second preview unavailable for this track.')
+      return {
+        success: false,
+        error: 'In-browser playback requires Spotify Premium (for the full track), and no 30-second preview is available for this track. Try a different song, or connect a Spotify Premium account for full in-browser playback.',
+      }
     }
     const t = playedTrack
     setLiked(false)
@@ -537,7 +540,7 @@ export default function App() {
       message: mode === 'sdk'
         ? `Now playing on Spotify: ${t.name} by ${t.artist}`
         : mode === 'preview'
-          ? `Playing 30-second preview: ${t.name} by ${t.artist} (open Spotify on any device for full track)`
+          ? `Playing 30-second preview: ${t.name} by ${t.artist} (Spotify Premium required for full in-browser track)`
           : 'Track found but needs audio permission — tap the player to start',
     }
   }, [clearProgressTimer, playTrackDirect])
