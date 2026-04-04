@@ -266,6 +266,7 @@ router.get('/spotify/search', requireAuth, async (req: AuthenticatedRequest, res
           id: string
           name: string
           uri: string
+          explicit: boolean
           artists: Array<{ name: string }>
           album: { name: string; images: Array<{ url: string }> }
           duration_ms: number
