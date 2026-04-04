@@ -79,7 +79,7 @@ app.use('/apps', express.static(path.join(process.cwd(), 'public/apps'), {
     res.setHeader('X-Frame-Options', 'ALLOWALL')
     res.setHeader(
       'Content-Security-Policy',
-      `default-src 'self' http://localhost:3001; script-src 'self' http://localhost:3001 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co https://www.desmos.com; worker-src blob: https://www.desmos.com; connect-src 'self' http://localhost:3001 https://api.spotify.com https://accounts.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co https://www.desmos.com ${FRONTEND_URL} ${VERCEL_URL}; img-src * data: blob:; media-src blob: https://*.scdn.co https://*.spotify.com; frame-ancestors 'self' ${FRONTEND_URL} ${VERCEL_URL} http://localhost:5173 http://localhost:1212`,
+      `default-src 'self' http://localhost:3001; script-src 'self' http://localhost:3001 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co https://www.desmos.com; style-src 'self' 'unsafe-inline'; worker-src blob: https://www.desmos.com; connect-src 'self' http://localhost:3001 https://api.spotify.com https://accounts.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co https://www.desmos.com ${FRONTEND_URL} ${VERCEL_URL}; img-src * data: blob:; media-src blob: https://*.scdn.co https://*.spotify.com; frame-src https://sdk.scdn.co; frame-ancestors 'self' ${FRONTEND_URL} ${VERCEL_URL} http://localhost:5173 http://localhost:1212`,
     )
   },
 }))
