@@ -475,9 +475,23 @@ export default function App() {
     try {
       const data = await apiFetch('/api/oauth/spotify/authorize')
       const popup = window.open(data.authUrl, 'spotify-auth', 'width=500,height=700')
+
+      // Listen for the postMessage from the self-closing OAuth callback page
+      const onOAuthMsg = async (e: MessageEvent) => {
+        if (e.data?.type === 'oauth_success') {
+          window.removeEventListener('message', onOAuthMsg)
+          clearInterval(timer)
+          const ok = await checkConnection()
+          if (ok) initSpotifySdk()
+        }
+      }
+      window.addEventListener('message', onOAuthMsg)
+
+      // Fallback: also poll for popup close
       const timer = setInterval(async () => {
         if (popup?.closed) {
           clearInterval(timer)
+          window.removeEventListener('message', onOAuthMsg)
           const ok = await checkConnection()
           if (ok) initSpotifySdk()
         }

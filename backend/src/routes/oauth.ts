@@ -125,9 +125,19 @@ router.get('/:app/callback', async (req, res, next) => {
 
     if (upsertErr) throw createError(upsertErr.message, 500)
 
-    // Redirect back to frontend
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
-    res.redirect(`${frontendUrl}?oauth_success=${app}`)
+    // Return a self-closing page so the OAuth popup closes automatically
+    // and the opener's polling interval can detect closure and reinitialize the SDK.
+    res.send(`<!DOCTYPE html><html><head><title>Connected!</title></head><body>
+      <p style="font-family:sans-serif;text-align:center;padding:40px">
+        ✅ Spotify connected! This window will close automatically.
+      </p>
+      <script>
+        if (window.opener) {
+          window.opener.postMessage({ type: 'oauth_success', app: '${app}' }, '*');
+        }
+        setTimeout(() => window.close(), 500);
+      </script>
+    </body></html>`)
   } catch (err) {
     next(err)
   }
