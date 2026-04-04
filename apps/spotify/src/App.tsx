@@ -313,18 +313,15 @@ export default function App() {
   // ── Core play ─────────────────────────────────────────────────────────────
 
   const playTrackDirect = useCallback(async (track: Track): Promise<'sdk' | 'preview' | 'error'> => {
-    try {
-      let targetDeviceId: string | undefined = deviceIdRef.current ?? undefined
-      if (!targetDeviceId) {
-        const devData = await apiFetch('/api/oauth/spotify/devices')
-        const devices: Array<{ id: string; name: string; is_active: boolean }> = devData.devices || []
-        const active = devices.find(d => d.is_active) || devices[0]
-        if (active) targetDeviceId = active.id
-      }
-      if (targetDeviceId) {
+    // Only use the Web Playback SDK in-browser device — do NOT fall back to
+    // fetching external Spotify devices (phones, computers, etc.).
+    // In-browser = SDK device ID set by the 'ready' listener.
+    // If no SDK device (free account or SDK not ready), go straight to preview.
+    if (deviceIdRef.current) {
+      try {
         const result = await apiFetch('/api/oauth/spotify/play', {
           method: 'PUT',
-          body: JSON.stringify({ uri: track.uri, deviceId: targetDeviceId }),
+          body: JSON.stringify({ uri: track.uri, deviceId: deviceIdRef.current }),
         })
         if (result.success) {
           connectModeRef.current = true
@@ -335,8 +332,8 @@ export default function App() {
           startConnectPoll()
           return 'sdk'
         }
-      }
-    } catch { /* fall through to preview */ }
+      } catch { /* fall through to preview */ }
+    }
     connectModeRef.current = false
 
     if (!track.previewUrl) return 'error'
@@ -496,21 +493,23 @@ export default function App() {
       setStatusMsg('⚠️ Spotify connection lost — tap "Connect" to reconnect')
       return { success: false, error: 'Spotify search unavailable — please reconnect your Spotify account' }
     }
-    const tracks = (data.tracks || []) as Track[]
-    if (tracks.length === 0) { setStatusMsg(`No results for "${query}"`); return { success: false, error: 'No tracks found' } }
-    const track = tracks[0]
+    const allTracks = (data.tracks || []) as Track[]
+    if (allTracks.length === 0) { setStatusMsg(`No results for "${query}"`); return { success: false, error: 'No tracks found' } }
 
-    // Explicit content filter — block before any playback attempt
-    if (getExplicitFilter() && track.explicit) {
-      setStatusMsg(`🚫 "${track.name}" is explicit — blocked by content filter`)
+    // Explicit content filter — strip all explicit results, prefer a clean version
+    const tracks = getExplicitFilter() ? allTracks.filter(t => !t.explicit) : allTracks
+    if (tracks.length === 0) {
+      const blocked = allTracks[0]
+      setStatusMsg(`🚫 "${blocked.name}" — explicit content blocked`)
       return {
         success: false,
         blocked: 'explicit',
-        track: track.name,
-        artist: track.artist,
-        message: `"${track.name}" by ${track.artist} contains explicit content and cannot be played while the explicit filter is enabled.`,
+        track: blocked.name,
+        artist: blocked.artist,
+        message: `All results for "${query}" contain explicit content and cannot be played while the explicit filter is enabled. Try a different song or turn off the filter.`,
       }
     }
+    const track = tracks[0]
 
     if (data.needsReconnect) {
       setConnected(false); setView('disconnected')
@@ -604,18 +603,21 @@ export default function App() {
       data = await apiFetch(`/api/oauth/spotify/search?q=${encodeURIComponent(query)}&limit=3`)
     } catch { return { success: false, error: 'Search failed' } }
     if (!data.tracks?.length) return { success: false, error: 'No results' }
-    const track = data.tracks[0]
+    const allQueueTracks = data.tracks as Track[]
 
-    // Explicit content filter
-    if (getExplicitFilter() && track.explicit) {
+    // Explicit content filter — use first clean result
+    const cleanTracks = getExplicitFilter() ? allQueueTracks.filter(t => !t.explicit) : allQueueTracks
+    if (cleanTracks.length === 0) {
+      const blocked = allQueueTracks[0]
       return {
         success: false,
         blocked: 'explicit',
-        track: track.name,
-        artist: track.artist,
-        message: `"${track.name}" by ${track.artist} contains explicit content and cannot be queued while the explicit filter is enabled.`,
+        track: blocked.name,
+        artist: blocked.artist,
+        message: `All results for "${query}" contain explicit content and cannot be queued while the explicit filter is enabled.`,
       }
     }
+    const track = cleanTracks[0]
 
     const newQueue = [...queueRef.current, track]
     queueRef.current = newQueue
