@@ -346,6 +346,23 @@ const apps = [
           },
         },
       },
+      {
+        name: 'get_playback_state',
+        description: 'Returns the current playback state: whether music is actively streaming, the track name, artist, progress, and playback mode (sdk = Premium full track, preview = 30-sec clip, none = nothing playing). Use this to verify playback is actually happening, or to check what is currently playing before responding to control requests.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            isPlaying: { type: 'boolean', description: 'True if audio is actively streaming right now' },
+            track: { type: 'string' },
+            artist: { type: 'string' },
+            album: { type: 'string' },
+            progressMs: { type: 'number', description: 'Current playback position in milliseconds' },
+            durationMs: { type: 'number', description: 'Total track duration in milliseconds' },
+            mode: { type: 'string', description: '"sdk", "preview", or "none"' },
+          },
+        },
+      },
     ],
   },
   // ── Desmos Graphing Calculator ─────────────────────────────────────────────

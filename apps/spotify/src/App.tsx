@@ -598,6 +598,52 @@ export default function App() {
     return { success: true, track: queueRef.current[0]?.name ?? 'next track' }
   }, [advanceQueue])
 
+  const handleGetPlaybackState = useCallback(async (_params?: Record<string, unknown>) => {
+    // SDK mode — query Web Playback SDK for live state
+    if (deviceIdRef.current && playerRef.current) {
+      try {
+        const state = await playerRef.current.getCurrentState()
+        if (state) {
+          const t = state.track_window.current_track
+          return {
+            isPlaying: !state.paused,
+            track: t.name,
+            artist: t.artists.map((a: { name: string }) => a.name).join(', '),
+            album: t.album.name,
+            progressMs: state.position,
+            durationMs: state.duration,
+            mode: 'sdk',
+          }
+        }
+      } catch { /* fall through to preview check */ }
+    }
+    // Preview mode — check <audio> element
+    if (audioRef.current?.src) {
+      const audio = audioRef.current
+      const track = currentTrackRef.current
+      return {
+        isPlaying: !audio.paused && !audio.ended,
+        track: track?.name ?? null,
+        artist: track?.artist ?? null,
+        album: track?.album ?? null,
+        progressMs: Math.round(audio.currentTime * 1000),
+        durationMs: Math.round((audio.duration || 30) * 1000),
+        mode: 'preview',
+      }
+    }
+    // Nothing active
+    const track = currentTrackRef.current
+    return {
+      isPlaying: false,
+      track: track?.name ?? null,
+      artist: track?.artist ?? null,
+      album: track?.album ?? null,
+      progressMs: 0,
+      durationMs: 0,
+      mode: 'none',
+    }
+  }, [])
+
   const handleQueueTrack = useCallback(async (params: Record<string, unknown>) => {
     const query = String(params.query || '')
     if (!query) return { success: false, error: 'query is required' }
@@ -635,6 +681,7 @@ export default function App() {
     registerTool('set_volume', handleSetVolume)
     registerTool('skip_to_next', handleSkipNext)
     registerTool('queue_track', handleQueueTrack)
+    registerTool('get_playback_state', handleGetPlaybackState)
     initBridge()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
