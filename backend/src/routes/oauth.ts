@@ -202,12 +202,17 @@ router.get('/spotify/status', requireAuth, async (req: AuthenticatedRequest, res
 
     const { data } = await supabaseAdmin
       .from('oauth_tokens')
-      .select('id, expires_at')
+      .select('id, expires_at, refresh_token')
       .eq('user_id', req.userId!)
       .eq('app_id', appReg.id)
       .single()
 
-    res.json({ connected: !!data, expired: data?.expires_at ? new Date(data.expires_at) < new Date() : false })
+    // Report expired=false when a refresh_token exists: the access token is
+    // stale but getSpotifyToken() will refresh it automatically when the SDK
+    // initialises. Only flag expired when there is truly no way to recover.
+    const accessExpired = data?.expires_at ? new Date(data.expires_at) < new Date() : false
+    const canRefresh = accessExpired && !!data?.refresh_token
+    res.json({ connected: !!data, expired: accessExpired && !canRefresh })
   } catch (err) {
     next(err)
   }
