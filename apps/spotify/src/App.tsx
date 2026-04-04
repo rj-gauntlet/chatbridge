@@ -370,19 +370,20 @@ export default function App() {
   // ── SDK init ──────────────────────────────────────────────────────────────
 
   const initSpotifySdk = useCallback(async () => {
-    console.log('[SDK] initSpotifySdk start, apiUrl:', getApiUrl())
+    setStatusMsg(`[dbg] init start, api:${getApiUrl().slice(0,30)}`)
     let spotifyToken: string | null = null
     try {
       const data = await apiFetch('/api/oauth/spotify/token')
       spotifyToken = data.token
-      console.log('[SDK] got token:', spotifyToken ? 'yes (' + spotifyToken.slice(0,8) + '...)' : 'none/mock')
+      setStatusMsg(`[dbg] token:${spotifyToken ? 'ok' : 'null/mock'}`)
       if (!spotifyToken || spotifyToken === 'mock-spotify-token') return
-    } catch (e) { console.error('[SDK] token fetch failed:', e); return }
+    } catch (e) { setStatusMsg(`[dbg] token err:${String(e).slice(0,60)}`); return }
 
     const createPlayer = () => {
-      console.log('[SDK] createPlayer called, window.Spotify:', !!window.Spotify)
-      try { window.localStorage.setItem('__sdk_ls_test__', '1'); console.log('[SDK] localStorage OK') }
-      catch (e) { console.error('[SDK] localStorage blocked:', e) }
+      let lsStatus = 'ok'
+      try { window.localStorage.setItem('__sdk_ls_test__', '1') }
+      catch (e) { lsStatus = 'BLOCKED:' + String(e).slice(0,30) }
+      setStatusMsg(`[dbg] createPlayer,spotify:${!!window.Spotify},ls:${lsStatus}`)
       if (playerRef.current) { playerRef.current.disconnect(); playerRef.current = null; deviceIdRef.current = null }
       const player = new window.Spotify.Player({
         name: 'ChatBridge Player',
