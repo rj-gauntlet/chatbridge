@@ -370,14 +370,19 @@ export default function App() {
   // ── SDK init ──────────────────────────────────────────────────────────────
 
   const initSpotifySdk = useCallback(async () => {
+    console.log('[SDK] initSpotifySdk start, apiUrl:', getApiUrl())
     let spotifyToken: string | null = null
     try {
       const data = await apiFetch('/api/oauth/spotify/token')
       spotifyToken = data.token
+      console.log('[SDK] got token:', spotifyToken ? 'yes (' + spotifyToken.slice(0,8) + '...)' : 'none/mock')
       if (!spotifyToken || spotifyToken === 'mock-spotify-token') return
-    } catch { return }
+    } catch (e) { console.error('[SDK] token fetch failed:', e); return }
 
     const createPlayer = () => {
+      console.log('[SDK] createPlayer called, window.Spotify:', !!window.Spotify)
+      try { window.localStorage.setItem('__sdk_ls_test__', '1'); console.log('[SDK] localStorage OK') }
+      catch (e) { console.error('[SDK] localStorage blocked:', e) }
       if (playerRef.current) { playerRef.current.disconnect(); playerRef.current = null; deviceIdRef.current = null }
       const player = new window.Spotify.Player({
         name: 'ChatBridge Player',
@@ -427,14 +432,23 @@ export default function App() {
       playerRef.current = player
     }
 
-    if (window.Spotify) { createPlayer() }
-    else {
-      window.onSpotifyWebPlaybackSDKReady = createPlayer
+    if (window.Spotify) {
+      console.log('[SDK] window.Spotify already loaded, calling createPlayer directly')
+      createPlayer()
+    } else {
+      console.log('[SDK] loading spotify-player.js script...')
+      window.onSpotifyWebPlaybackSDKReady = () => {
+        console.log('[SDK] onSpotifyWebPlaybackSDKReady fired')
+        createPlayer()
+      }
       if (!document.getElementById('spotify-sdk-script')) {
         const script = document.createElement('script')
         script.id = 'spotify-sdk-script'
         script.src = 'https://sdk.scdn.co/spotify-player.js'
+        script.onerror = (e) => console.error('[SDK] script load error:', e)
         document.head.appendChild(script)
+      } else {
+        console.log('[SDK] script tag already exists, waiting for onSpotifyWebPlaybackSDKReady')
       }
     }
   }, [])
