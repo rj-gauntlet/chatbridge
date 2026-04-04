@@ -393,13 +393,23 @@ export default function App() {
         setStatusMsg(null)
       })
       player.addListener('not_ready', () => { deviceIdRef.current = null })
-      player.addListener('account_error', () => {
+      player.addListener('account_error', ({ message }: { message: string }) => {
+        console.error('[Spotify SDK] account_error:', message)
         setIsPremium(false)
-        setStatusMsg('Spotify Premium required for full tracks — using 30-second previews')
+        setStatusMsg('⚠️ Spotify Premium required — your account may be Free, or this Spotify app is in Development Mode and your email isn\'t on the allowlist.')
       })
-      player.addListener('authentication_error', () => {
+      player.addListener('authentication_error', ({ message }: { message: string }) => {
+        console.error('[Spotify SDK] authentication_error:', message)
         setIsPremium(false)
-        setStatusMsg('Spotify auth error — please reconnect')
+        setStatusMsg('⚠️ Spotify auth error — token may be expired. Click Reconnect.')
+      })
+      player.addListener('initialization_error', ({ message }: { message: string }) => {
+        console.error('[Spotify SDK] initialization_error:', message)
+        setStatusMsg(`⚠️ SDK init failed: ${message}`)
+      })
+      player.connect().then((success: boolean) => {
+        console.log('[Spotify SDK] connect() result:', success)
+        if (!success) setStatusMsg('⚠️ SDK connect() returned false — check CSP or token scopes.')
       })
       player.addListener('player_state_changed', (state: SpotifyPlaybackState | null) => {
         if (!state) return
@@ -414,7 +424,6 @@ export default function App() {
         setIsPlaying(!state.paused)
         if (state.duration > 0) { setProgress(state.position / state.duration); setDuration(state.duration) }
       })
-      player.connect()
       playerRef.current = player
     }
 
@@ -757,7 +766,12 @@ export default function App() {
           </svg>
           <span style={{ fontWeight: 700, fontSize: 13, flex: 1, letterSpacing: '-0.2px' }}>Spotify</span>
           {isPremium && <span style={badge('#143d22', GREEN)}>Premium</span>}
-          {connected && !isPremium && <span style={badge('#1a1a1a', DIM)}>Free</span>}
+          {connected && !isPremium && (
+            <>
+              <span style={badge('#1a1a1a', DIM)}>Free</span>
+              <button onClick={handleConnect} style={{ ...smallBtn, fontSize: 10, padding: '2px 7px' }} title="Re-authorize Spotify to activate Premium SDK">Reconnect</button>
+            </>
+          )}
           {connected
             ? <div style={{ width: 7, height: 7, borderRadius: '50%', background: GREEN }} title="Connected to Spotify" />
             : <button onClick={handleConnect} style={smallBtn}>Connect</button>
