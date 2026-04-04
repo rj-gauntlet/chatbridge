@@ -94,7 +94,7 @@ app.use('/api/apps', webhookRoutes)
 
 // ── Health check ─────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '7c92a24' })
 })
 
 // ── Global error handler ─────────────────────────────────────
