@@ -76,6 +76,12 @@ app.use('/apps', express.static(path.join(process.cwd(), 'public/apps'), {
     // is cross-origin from localhost:3001. CORP same-origin blocks script/fetch loads
     // from within the sandboxed iframe. Override to cross-origin for /apps/* static files.
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+    // COOP fix: helmet sets Cross-Origin-Opener-Policy: same-origin globally.
+    // Sandboxed iframes (null/opaque origin) with COOP: same-origin immediately lose
+    // their reference to any popup they open (since null ≠ any real origin → cross-origin).
+    // This breaks OAuth: window.opener is null in the callback and popup.closed polling
+    // never fires. Override to unsafe-none so the opener/popup link stays intact.
+    res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none')
     res.setHeader('X-Frame-Options', 'ALLOWALL')
     res.setHeader(
       'Content-Security-Policy',

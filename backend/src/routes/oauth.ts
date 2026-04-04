@@ -127,6 +127,10 @@ router.get('/:app/callback', async (req, res, next) => {
 
     // Return a self-closing page so the OAuth popup closes automatically
     // and the opener's polling interval can detect closure and reinitialize the SDK.
+    // COOP fix: helmet sets same-origin globally; override to unsafe-none so window.opener
+    // is accessible in this popup (the opener is a sandboxed iframe with null/opaque origin,
+    // which is always cross-origin → same-origin COOP would null out window.opener).
+    res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none')
     res.send(`<!DOCTYPE html><html><head><title>Connected!</title></head><body>
       <p style="font-family:sans-serif;text-align:center;padding:40px">
         ✅ Spotify connected! This window will close automatically.
