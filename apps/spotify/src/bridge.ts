@@ -13,6 +13,24 @@ let allowedOrigin: string | null = null
 let chatbridgeToken = ''
 let chatbridgeApiUrl = ''
 
+// Resolves when the first auth_token message is received from the platform.
+// Callers can await waitForBridge() before making API calls so they always
+// use the injected Railway URL instead of falling back to localhost:3001.
+let _bridgeReadyResolve: (() => void) | null = null
+const _bridgeReadyPromise = new Promise<void>(resolve => { _bridgeReadyResolve = resolve })
+
+/**
+ * Returns a promise that resolves when the platform sends the first auth_token,
+ * or after timeoutMs (default 3 s) — whichever comes first. The timeout allows
+ * the app to work in standalone / local-dev mode without a parent frame.
+ */
+export function waitForBridge(timeoutMs = 3000): Promise<void> {
+  return Promise.race([
+    _bridgeReadyPromise,
+    new Promise<void>(resolve => setTimeout(resolve, timeoutMs)),
+  ])
+}
+
 // Explicit content filter — toggled from the parent chat UI
 let explicitFilterEnabled = false
 
@@ -56,6 +74,11 @@ export function initBridge(trustedOrigin?: string) {
       const m = msg as unknown as { type: string; token?: string; apiUrl?: string }
       chatbridgeToken = m.token || ''
       chatbridgeApiUrl = m.apiUrl || ''
+      // Unblock any waitForBridge() callers on the first auth_token received
+      if (_bridgeReadyResolve) {
+        _bridgeReadyResolve()
+        _bridgeReadyResolve = null
+      }
       return
     }
 

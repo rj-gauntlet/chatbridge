@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getApiUrl, getExplicitFilter, getToken, initBridge, registerTool, sendStateUpdate } from './bridge'
+import { getApiUrl, getExplicitFilter, getToken, initBridge, registerTool, sendStateUpdate, waitForBridge } from './bridge'
 
 // ── Spotify Web Playback SDK type declarations ─────────────────────────────
 
@@ -452,11 +452,18 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const timer = setTimeout(async () => {
+    let cancelled = false
+    ;(async () => {
+      // Wait until the platform has injected the auth_token (and therefore the
+      // correct Railway API URL) before calling the backend. Without this, the
+      // first API calls race against the postMessage and fall back to localhost:3001,
+      // which Chrome blocks from null/opaque sandboxed-iframe origins.
+      await waitForBridge()
+      if (cancelled) return
       const isConnected = await checkConnection()
       if (isConnected) initSpotifySdk()
-    }, 200)
-    return () => clearTimeout(timer)
+    })()
+    return () => { cancelled = true }
   }, [checkConnection, initSpotifySdk])
 
   useEffect(() => {
