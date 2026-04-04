@@ -8,7 +8,7 @@ import { supabaseAdmin } from '../services/supabase'
 
 // Apps are served as static files from the backend at /apps/<slug>/
 // Set BACKEND_URL to the Railway deployment URL in production
-// e.g. BACKEND_URL=https://chatbridge-production.up.railway.app
+// e.g. BACKEND_URL=https://chatbridge-production-9505.up.railway.app
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001'
 const APPS_BASE = `${BACKEND_URL}/apps`
 
