@@ -326,10 +326,15 @@ export function PluginFrame({ plugin, iframeRef, onClose, onLoad }: PluginFrameP
       <iframe
         ref={iframeRef as React.RefObject<HTMLIFrameElement>}
         src={plugin.iframeUrl}
-        // Security: allow-scripts only (no allow-same-origin — prevents DOM access to parent)
+        // allow-same-origin: restores the iframe's natural cross-origin isolation.
+        // Since all apps are served from Railway (different domain than Vercel), the
+        // iframe's origin is still cross-origin from the parent — it cannot access the
+        // parent DOM or cookies. Without this the iframe gets a null/opaque origin which
+        // breaks the Spotify Web Playback SDK (it detects the sandboxed context and
+        // refuses to call getOAuthToken or fire ready, returning connect()=false).
         // allow-popups-to-escape-sandbox: OAuth popups need to escape sandbox so they can
         // access cookies/localStorage on accounts.spotify.com (needed to render login form)
-        sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+        sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"
         onLoad={onLoad}
         style={{
           width: '100%',
