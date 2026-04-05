@@ -335,6 +335,11 @@ export function PluginFrame({ plugin, iframeRef, onClose, onLoad }: PluginFrameP
         // allow-popups-to-escape-sandbox: OAuth popups need to escape sandbox so they can
         // access cookies/localStorage on accounts.spotify.com (needed to render login form)
         sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+        // encrypted-media: Spotify Web Playback SDK requires EME (Widevine DRM) via
+        // navigator.requestMediaKeySystemAccess(). Chrome blocks EME in iframes without
+        // this permission policy — the SDK connects (connect()=true) but stalls silently
+        // before firing the ready event because the DRM setup call fails.
+        allow="encrypted-media"
         onLoad={onLoad}
         style={{
           width: '100%',
