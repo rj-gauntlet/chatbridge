@@ -211,6 +211,8 @@ export interface AppRegistration {
   auth_type: string
   tools: Array<{ name: string; description: string }>
   status: string
+  sandbox_permissions?: string
+  permission_policy?: string
 }
 
 export async function listApps(): Promise<AppRegistration[]> {

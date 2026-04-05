@@ -5,7 +5,11 @@ export interface PluginState {
   iframeUrl: string
   status: 'loading' | 'ready' | 'error'
   lastState?: Record<string, unknown>
+  sandboxPermissions?: string
+  permissionPolicy?: string
 }
+
+const DEFAULT_SANDBOX = 'allow-scripts allow-forms'
 
 interface PendingCall {
   resolve: (result: Record<string, unknown>) => void
@@ -135,8 +139,8 @@ export function usePluginManager(
   }, [])
 
   /** Open an app (mount iframe) */
-  const openApp = useCallback((appSlug: string, iframeUrl: string) => {
-    const plugin: PluginState = { appSlug, iframeUrl, status: 'loading' }
+  const openApp = useCallback((appSlug: string, iframeUrl: string, sandboxPermissions?: string, permissionPolicy?: string) => {
+    const plugin: PluginState = { appSlug, iframeUrl, status: 'loading', sandboxPermissions, permissionPolicy }
     activePluginRef.current = plugin
     setActivePlugin(plugin)
   }, [])
@@ -326,25 +330,12 @@ export function PluginFrame({ plugin, iframeRef, onClose, onLoad }: PluginFrameP
       <iframe
         ref={iframeRef as React.RefObject<HTMLIFrameElement>}
         src={plugin.iframeUrl}
-        // allow-same-origin: restores the iframe's natural cross-origin isolation.
-        // Since all apps are served from Railway (different domain than Vercel), the
-        // iframe's origin is still cross-origin from the parent — it cannot access the
-        // parent DOM or cookies. Without this the iframe gets a null/opaque origin which
-        // breaks the Spotify Web Playback SDK (it detects the sandboxed context and
-        // refuses to call getOAuthToken or fire ready, returning connect()=false).
-        // allow-popups-to-escape-sandbox: OAuth popups need to escape sandbox so they can
-        // access cookies/localStorage on accounts.spotify.com (needed to render login form)
-        sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"
-        // encrypted-media: Spotify Web Playback SDK requires EME (Widevine DRM) via
-        // navigator.requestMediaKeySystemAccess(). Chrome blocks EME in iframes without
-        // this permission policy — the SDK connects (connect()=true) but stalls silently
-        // before firing the ready event because the DRM setup call fails.
-        // autoplay: Chrome suspends the AudioContext inside iframes until a user gesture
-        // occurs within the iframe itself. A click in the parent frame doesn't satisfy
-        // the gesture requirement for a child frame. Without allow="autoplay" the SDK
-        // registers as a Spotify device and shows playback state correctly but the
-        // AudioContext stays suspended so no audio is produced on the computer.
-        allow="encrypted-media; autoplay"
+        // Per-app sandbox permissions — see app_registrations.sandbox_permissions column.
+        // Default is restrictive (allow-scripts allow-forms). Apps requiring elevated
+        // permissions (e.g. Spotify needs allow-same-origin for DRM/EME) declare them
+        // explicitly in their registration and they are reviewed before approval.
+        sandbox={plugin.sandboxPermissions || DEFAULT_SANDBOX}
+        allow={plugin.permissionPolicy || undefined}
         onLoad={onLoad}
         style={{
           width: '100%',

@@ -41,6 +41,8 @@ export interface AppRegistration {
   oauth_config?: OAuthConfig
   tools: ToolSchema[]
   webhook_url?: string
+  sandbox_permissions?: string  // iframe sandbox attr. NULL = "allow-scripts allow-forms"
+  permission_policy?: string    // iframe allow attr. NULL = none
   status: AppStatus
   created_at: string
   updated_at?: string

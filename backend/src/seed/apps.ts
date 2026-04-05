@@ -259,6 +259,8 @@ const apps = [
     icon_url: '🎵',
     iframe_url: `${APPS_BASE}/spotify/index.html`,
     auth_type: 'oauth2',
+    sandbox_permissions: 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin',
+    permission_policy: 'encrypted-media; autoplay',
     oauth_config: {
       auth_url: 'https://accounts.spotify.com/authorize',
       token_url: 'https://accounts.spotify.com/api/token',
@@ -473,6 +475,170 @@ const apps = [
               },
             },
             expressionCount: { type: 'number' },
+          },
+        },
+      },
+    ],
+  },
+  {
+    name: 'Code Playground',
+    slug: 'code',
+    description: 'Interactive JavaScript code editor and runner. AI can set code, run it, read what the student typed, and display exercise prompts. Use when user wants to write code, learn programming, practice JavaScript, or do coding exercises.',
+    icon_url: '💻',
+    iframe_url: `${APPS_BASE}/code/index.html`,
+    auth_type: 'internal',
+    status: 'active',
+    tools: [
+      {
+        name: 'set_code',
+        description: 'Replace the editor contents with new code',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'The code to set in the editor' },
+          },
+          required: ['code'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: { success: { type: 'boolean' } },
+        },
+      },
+      {
+        name: 'run_code',
+        description: 'Execute the current code (or provided code) and return console output and any errors',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'Optional code to set before running. If omitted, runs current editor content.' },
+          },
+          required: [],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            output: { type: 'string', description: 'Console output from execution' },
+            error: { type: 'string', description: 'Error message if execution failed' },
+          },
+        },
+      },
+      {
+        name: 'get_code',
+        description: 'Read the current contents of the code editor (what the student has typed)',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: {
+          type: 'object',
+          properties: { code: { type: 'string' } },
+        },
+      },
+      {
+        name: 'set_prompt',
+        description: 'Display exercise instructions or a problem description above the editor',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            prompt: { type: 'string', description: 'The exercise instructions to display' },
+          },
+          required: ['prompt'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: { success: { type: 'boolean' } },
+        },
+      },
+    ],
+  },
+  {
+    name: 'World Map',
+    slug: 'worldmap',
+    description: 'Interactive world map for geography education. AI can fly to locations, place markers, highlight regions, and clear the map. Use when user asks about geography, countries, locations, capitals, trade routes, or wants to explore the world map.',
+    icon_url: '🗺️',
+    iframe_url: `${APPS_BASE}/worldmap/index.html`,
+    auth_type: 'internal',
+    status: 'active',
+    tools: [
+      {
+        name: 'fly_to',
+        description: 'Pan and zoom the map to a specific location',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            lat: { type: 'number', description: 'Latitude' },
+            lng: { type: 'number', description: 'Longitude' },
+            zoom: { type: 'number', description: 'Zoom level (1-18, default 10)' },
+            name: { type: 'string', description: 'Optional place name to show as popup' },
+          },
+          required: ['lat', 'lng'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            center: { type: 'object', properties: { lat: { type: 'number' }, lng: { type: 'number' } } },
+            zoom: { type: 'number' },
+          },
+        },
+      },
+      {
+        name: 'add_marker',
+        description: 'Place a labeled marker pin on the map',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Unique marker ID' },
+            lat: { type: 'number', description: 'Latitude' },
+            lng: { type: 'number', description: 'Longitude' },
+            label: { type: 'string', description: 'Marker label text' },
+            description: { type: 'string', description: 'Optional popup description' },
+          },
+          required: ['id', 'lat', 'lng', 'label'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: { success: { type: 'boolean' }, markerId: { type: 'string' } },
+        },
+      },
+      {
+        name: 'remove_marker',
+        description: 'Remove a marker from the map by ID',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'ID of the marker to remove' },
+          },
+          required: ['id'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: { success: { type: 'boolean' } },
+        },
+      },
+      {
+        name: 'highlight_region',
+        description: 'Highlight a geographic region on the map using GeoJSON',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Unique region ID' },
+            geojson: { type: 'object', description: 'GeoJSON geometry object for the region' },
+            color: { type: 'string', description: 'Fill color (default #3388ff)' },
+          },
+          required: ['id', 'geojson'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: { success: { type: 'boolean' } },
+        },
+      },
+      {
+        name: 'clear_map',
+        description: 'Remove all markers and highlighted regions from the map',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            cleared: { type: 'object', properties: { markers: { type: 'number' }, highlights: { type: 'number' } } },
           },
         },
       },

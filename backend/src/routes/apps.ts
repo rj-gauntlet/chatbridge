@@ -14,7 +14,7 @@ router.get('/', async (_req, res, next) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('app_registrations')
-      .select('id, name, slug, description, icon_url, iframe_url, auth_type, tools, status')
+      .select('id, name, slug, description, icon_url, iframe_url, auth_type, tools, status, sandbox_permissions, permission_policy')
       .eq('status', 'active')
       .order('name')
 
@@ -50,7 +50,7 @@ router.get('/:id', async (req, res, next) => {
  */
 router.post('/', async (req: AuthenticatedRequest, res, next) => {
   try {
-    const { name, slug, description, iframe_url, auth_type, tools, icon_url, webhook_url } = req.body
+    const { name, slug, description, iframe_url, auth_type, tools, icon_url, webhook_url, sandbox_permissions, permission_policy } = req.body
 
     if (!name || !slug || !description || !iframe_url) {
       throw createError('name, slug, description, and iframe_url are required', 400)
@@ -58,7 +58,7 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
 
     const { data, error } = await supabaseAdmin
       .from('app_registrations')
-      .insert({ name, slug, description, iframe_url, auth_type: auth_type || 'internal', tools: tools || [], icon_url, webhook_url })
+      .insert({ name, slug, description, iframe_url, auth_type: auth_type || 'internal', tools: tools || [], icon_url, webhook_url, sandbox_permissions, permission_policy })
       .select()
       .single()
 

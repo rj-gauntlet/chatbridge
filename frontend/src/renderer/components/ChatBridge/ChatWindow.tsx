@@ -142,7 +142,7 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
           const slug = (event as { type: string; appSlug: string }).appSlug
           const appReg = apps.find(a => a.slug === slug)
           if (appReg && (!activePlugin || activePlugin.appSlug !== slug)) {
-            openApp(slug, appReg.iframe_url)
+            openApp(slug, appReg.iframe_url, appReg.sandbox_permissions, appReg.permission_policy)
           }
         } else if (event.type === 'tool_call') {
           // Relay tool invocation to iframe
