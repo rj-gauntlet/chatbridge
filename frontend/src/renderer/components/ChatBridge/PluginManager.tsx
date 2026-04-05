@@ -339,7 +339,12 @@ export function PluginFrame({ plugin, iframeRef, onClose, onLoad }: PluginFrameP
         // navigator.requestMediaKeySystemAccess(). Chrome blocks EME in iframes without
         // this permission policy — the SDK connects (connect()=true) but stalls silently
         // before firing the ready event because the DRM setup call fails.
-        allow="encrypted-media"
+        // autoplay: Chrome suspends the AudioContext inside iframes until a user gesture
+        // occurs within the iframe itself. A click in the parent frame doesn't satisfy
+        // the gesture requirement for a child frame. Without allow="autoplay" the SDK
+        // registers as a Spotify device and shows playback state correctly but the
+        // AudioContext stays suspended so no audio is produced on the computer.
+        allow="encrypted-media; autoplay"
         onLoad={onLoad}
         style={{
           width: '100%',
