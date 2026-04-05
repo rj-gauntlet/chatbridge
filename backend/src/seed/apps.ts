@@ -483,7 +483,7 @@ const apps = [
   {
     name: 'Code Playground',
     slug: 'code',
-    description: 'Interactive JavaScript code editor and runner. AI can set code, run it, read what the student typed, and display exercise prompts. Use when user wants to write code, learn programming, practice JavaScript, or do coding exercises.',
+    description: 'Interactive JavaScript-only code editor and runner. IMPORTANT: Only JavaScript is supported — do NOT use Python, Java, or any other language. AI can set code, run it, read what the student typed, and display exercise prompts. If the user asks to code in a non-JavaScript language, tell them this playground only supports JavaScript and offer to help with JavaScript instead.',
     icon_url: '💻',
     iframe_url: `${APPS_BASE}/code/index.html`,
     auth_type: 'internal',
