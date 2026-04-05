@@ -370,33 +370,20 @@ export default function App() {
   // ── SDK init ──────────────────────────────────────────────────────────────
 
   const initSpotifySdk = useCallback(async () => {
-    setStatusMsg(`[dbg] init start, api:${getApiUrl().slice(0,30)}`)
     let spotifyToken: string | null = null
     try {
       const data = await apiFetch('/api/oauth/spotify/token')
       spotifyToken = data.token
-      setStatusMsg(`[dbg] token:${spotifyToken ? 'ok' : 'null/mock'}`)
       if (!spotifyToken || spotifyToken === 'mock-spotify-token') return
-    } catch (e) { setStatusMsg(`[dbg] token err:${String(e).slice(0,60)}`); return }
+    } catch { return }
 
     const createPlayer = () => {
-      let lsStatus = 'ok'
-      try { window.localStorage.setItem('__sdk_ls_test__', '1') }
-      catch (e) { lsStatus = 'BLOCKED:' + String(e).slice(0,30) }
-      setStatusMsg(`[dbg] createPlayer,spotify:${!!window.Spotify},ls:${lsStatus}`)
       if (playerRef.current) { playerRef.current.disconnect(); playerRef.current = null; deviceIdRef.current = null }
       const player = new window.Spotify.Player({
         name: 'ChatBridge Player',
         getOAuthToken: async (cb) => {
-          setStatusMsg('[dbg] getOAuthToken called')
-          try {
-            const d = await apiFetch('/api/oauth/spotify/token')
-            setStatusMsg(`[dbg] getOAuthToken:ok,tok:${d.token ? d.token.slice(0,8) : 'null'}`)
-            cb(d.token)
-          } catch (e) {
-            setStatusMsg(`[dbg] getOAuthToken:err,using fallback`)
-            cb(spotifyToken!)
-          }
+          try { const d = await apiFetch('/api/oauth/spotify/token'); cb(d.token) }
+          catch { cb(spotifyToken!) }
         },
         volume: volumeRef.current / 100,
       })
@@ -407,28 +394,18 @@ export default function App() {
       })
       player.addListener('not_ready', () => { deviceIdRef.current = null })
       player.addListener('account_error', ({ message }: { message: string }) => {
-        console.error('[Spotify SDK] account_error:', message)
         setIsPremium(false)
         setStatusMsg('⚠️ Spotify Premium required — your account may be Free, or this Spotify app is in Development Mode and your email isn\'t on the allowlist.')
       })
       player.addListener('authentication_error', ({ message }: { message: string }) => {
-        console.error('[Spotify SDK] authentication_error:', message)
         setIsPremium(false)
         setStatusMsg('⚠️ Spotify auth error — token may be expired. Click Reconnect.')
       })
       player.addListener('initialization_error', ({ message }: { message: string }) => {
-        console.error('[Spotify SDK] initialization_error:', message)
         setStatusMsg(`⚠️ SDK init failed: ${message}`)
       })
-      // Wrap connect() with a 12-second timeout so we can see if it never resolves
-      const connectPromise = player.connect()
-      const timeoutPromise = new Promise<boolean>(resolve => setTimeout(() => resolve(false), 12000))
-      Promise.race([connectPromise, timeoutPromise]).then((success: boolean) => {
-        if (!success) {
-          setStatusMsg('[dbg] connect():false or timed-out after 12s')
-        } else {
-          setStatusMsg('[dbg] connect():true — waiting for ready event')
-        }
+      player.connect().then((success: boolean) => {
+        if (!success) setStatusMsg('⚠️ SDK connect() failed — check CSP or token scopes.')
       })
       player.addListener('player_state_changed', (state: SpotifyPlaybackState | null) => {
         if (!state) return
@@ -447,22 +424,14 @@ export default function App() {
     }
 
     if (window.Spotify) {
-      console.log('[SDK] window.Spotify already loaded, calling createPlayer directly')
       createPlayer()
     } else {
-      console.log('[SDK] loading spotify-player.js script...')
-      window.onSpotifyWebPlaybackSDKReady = () => {
-        console.log('[SDK] onSpotifyWebPlaybackSDKReady fired')
-        createPlayer()
-      }
+      window.onSpotifyWebPlaybackSDKReady = createPlayer
       if (!document.getElementById('spotify-sdk-script')) {
         const script = document.createElement('script')
         script.id = 'spotify-sdk-script'
         script.src = 'https://sdk.scdn.co/spotify-player.js'
-        script.onerror = (e) => console.error('[SDK] script load error:', e)
         document.head.appendChild(script)
-      } else {
-        console.log('[SDK] script tag already exists, waiting for onSpotifyWebPlaybackSDKReady')
       }
     }
   }, [])
