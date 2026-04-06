@@ -274,7 +274,7 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
                   size="sm"
                   variant={activePlugin?.appSlug === app.slug ? 'filled' : 'light'}
                   style={{ cursor: 'pointer' }}
-                  onClick={() => openApp(app.slug, app.iframe_url)}
+                  onClick={() => openApp(app.slug, app.iframe_url, app.sandbox_permissions, app.permission_policy)}
                 >
                   {app.icon_url || '📦'} {app.name}
                 </Badge>
