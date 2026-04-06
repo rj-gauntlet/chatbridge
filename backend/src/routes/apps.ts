@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth'
 import { supabaseAdmin } from '../services/supabase'
+import { getActiveApps, invalidateAppCache } from '../services/appRegistryCache'
 import { createError } from '../middleware/errorHandler'
 
 const router = Router()
@@ -12,14 +13,8 @@ router.use(requireAuth)
  */
 router.get('/', async (_req, res, next) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('app_registrations')
-      .select('id, name, slug, description, icon_url, iframe_url, auth_type, tools, status, sandbox_permissions, permission_policy')
-      .eq('status', 'active')
-      .order('name')
-
-    if (error) throw createError(error.message, 500)
-    res.json(data)
+    const apps = await getActiveApps()
+    res.json(apps)
   } catch (err) {
     next(err)
   }
@@ -67,6 +62,7 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
       throw createError(error.message, 500)
     }
 
+    invalidateAppCache()
     res.status(201).json(data)
   } catch (err) {
     next(err)
@@ -87,6 +83,7 @@ router.put('/:id', async (req, res, next) => {
       .single()
 
     if (error) throw createError(error.message, 500)
+    invalidateAppCache()
     res.json(data)
   } catch (err) {
     next(err)

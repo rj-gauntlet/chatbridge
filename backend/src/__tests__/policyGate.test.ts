@@ -38,35 +38,35 @@ const mockCall: ToolCallRequest = {
 }
 
 describe('Policy Gate', () => {
-  it('approves a valid tool call', () => {
-    const decision = approveToolCall(mockCall, mockApp)
+  it('approves a valid tool call', async () => {
+    const decision = await approveToolCall(mockCall, mockApp)
     expect(decision.approved).toBe(true)
     expect(decision.reason).toBeUndefined()
   })
 
-  it('denies when app is null (not found)', () => {
-    const decision = approveToolCall(mockCall, null)
+  it('denies when app is null (not found)', async () => {
+    const decision = await approveToolCall(mockCall, null)
     expect(decision.approved).toBe(false)
     expect(decision.reason).toBe('app_unavailable')
   })
 
-  it('denies when app is disabled', () => {
+  it('denies when app is disabled', async () => {
     const disabledApp = { ...mockApp, status: 'disabled' as const }
-    const decision = approveToolCall(mockCall, disabledApp)
+    const decision = await approveToolCall(mockCall, disabledApp)
     expect(decision.approved).toBe(false)
     expect(decision.reason).toBe('app_disabled')
   })
 
-  it('denies when tool not found in app', () => {
+  it('denies when tool not found in app', async () => {
     const call = { ...mockCall, toolName: 'nonexistent_tool' }
-    const decision = approveToolCall(call, mockApp)
+    const decision = await approveToolCall(call, mockApp)
     expect(decision.approved).toBe(false)
     expect(decision.reason).toBe('tool_not_found')
   })
 
-  it('denies when pending_review status', () => {
+  it('denies when pending_review status', async () => {
     const pendingApp = { ...mockApp, status: 'pending_review' as const }
-    const decision = approveToolCall(mockCall, pendingApp)
+    const decision = await approveToolCall(mockCall, pendingApp)
     expect(decision.approved).toBe(false)
     expect(decision.reason).toBe('app_disabled')
   })

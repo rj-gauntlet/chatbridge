@@ -7,7 +7,10 @@ import { classifyIntent } from '../services/intentClassifier'
 import { openai, DEFAULT_MODEL, SYSTEM_PROMPT } from '../services/openai'
 import { approveToolCall } from '../services/policyGate'
 import { applyToolFirewall } from '../services/toolFirewall'
+import { moderateMessage } from '../services/contentModeration'
 import { supabaseAdmin } from '../services/supabase'
+import { getActiveApps } from '../services/appRegistryCache'
+import { getCachedToolResult, cacheToolResult, invalidateAppCache as invalidateToolCache } from '../services/toolResultCache'
 import type { AppRegistration, ToolSchema } from '../../../shared/types/app'
 
 const router = Router()
@@ -16,6 +19,7 @@ router.use(requireAuth)
 const ChatRequestSchema = z.object({
   message: z.string().min(1).max(4000),
   conversationId: z.string().uuid().optional(),
+  activeAppSlug: z.string().optional(),
 })
 
 function sseWrite(res: Response, event: object) {
@@ -45,7 +49,7 @@ function buildAITool(
     parameters: zodParams,
     execute: async (params: Record<string, unknown>) => {
       // Policy Gate check
-      const decision = approveToolCall(
+      const decision = await approveToolCall(
         { appId: app.id, toolName: schema.name, parameters: params as Record<string, unknown>, userId, conversationId },
         app,
       )
@@ -54,6 +58,13 @@ function buildAITool(
         const msg = `Tool "${schema.name}" denied: ${decision.reason}`
         sseWrite(res, { type: 'tool_denied', toolName: schema.name, reason: decision.reason })
         return { error: msg, denied: true }
+      }
+
+      // Check tool result cache for deterministic tools (e.g., get_legal_moves, get_code)
+      const cached = getCachedToolResult(app.slug, schema.name, params as Record<string, unknown>)
+      if (cached) {
+        const sanitized = applyToolFirewall(cached, schema)
+        return sanitized
       }
 
       // Signal frontend to invoke the tool via postMessage relay
@@ -71,6 +82,18 @@ function buildAITool(
 
       // Apply tool-output firewall before returning to LLM
       const sanitized = applyToolFirewall(result, schema)
+
+      // Cache deterministic read results; invalidate cache when state changes
+      const cached2 = getCachedToolResult(app.slug, schema.name, params as Record<string, unknown>)
+      if (cached2 === null) {
+        // This was a non-cached tool (either a write tool or a cacheable read)
+        cacheToolResult(app.slug, schema.name, params as Record<string, unknown>, result)
+        // If this isn't a read-only/cacheable tool, it probably changed state — invalidate reads
+        const CACHEABLE = ['get_legal_moves', 'get_board_state', 'get_code', 'get_expressions', 'get_playback_state']
+        if (!CACHEABLE.includes(schema.name)) {
+          invalidateToolCache(app.slug)
+        }
+      }
 
       // Log the invocation
       supabaseAdmin.from('tool_invocations').insert({
@@ -133,6 +156,17 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
     const { message, conversationId: existingConvId } = parsed.data
     const userId = req.userId!
 
+    // ── Content Moderation ──────────────────────────────────
+    const moderation = await moderateMessage(message)
+    if (!moderation.allowed) {
+      console.warn(`[Moderation] Blocked message from user ${userId}: ${moderation.reason}`)
+      sseWrite(res, { type: 'start', conversationId: existingConvId || 'blocked' })
+      sseWrite(res, { type: 'delta', content: "I'm not able to help with that. Let's focus on something educational! What would you like to learn about?" })
+      sseWrite(res, { type: 'done', conversationId: existingConvId || 'blocked' })
+      res.end()
+      return
+    }
+
     // ── Conversation setup ──────────────────────────────────
     let conversationId = existingConvId
 
@@ -170,18 +204,32 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
       .order('created_at', { ascending: true })
       .limit(50)
 
-    const messages = (history || []).map((m) => ({
+    let messages = (history || []).map((m) => ({
       role: m.role as 'user' | 'assistant' | 'system' | 'tool',
       content: m.content,
     }))
 
-    // ── Phase 1: Intent Classification ──────────────────────
-    const { data: allApps } = await supabaseAdmin
-      .from('app_registrations')
-      .select('*').eq('status', 'active')
+    // ── Conversation History Compression ────────────────────
+    // If history exceeds 30 messages, summarize older ones to reduce token usage.
+    // Keep the last 10 messages verbatim for immediate context.
+    const MAX_VERBATIM = 10
+    const SUMMARIZE_THRESHOLD = 30
+    if (messages.length > SUMMARIZE_THRESHOLD) {
+      const older = messages.slice(0, messages.length - MAX_VERBATIM)
+      const recent = messages.slice(messages.length - MAX_VERBATIM)
+      const summaryText = older
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => `${m.role}: ${m.content.slice(0, 100)}`)
+        .join('\n')
+      messages = [
+        { role: 'system' as const, content: `[Earlier conversation summary]\n${summaryText.slice(0, 1500)}` },
+        ...recent,
+      ]
+    }
 
-    const apps = (allApps || []) as AppRegistration[]
-    const matchedSlug = await classifyIntent(message, apps)
+    // ── Phase 1: Intent Classification ──────────────────────
+    const apps = await getActiveApps()
+    const matchedSlug = await classifyIntent(message, apps, parsed.data.activeAppSlug)
     const matchedApp = matchedSlug ? apps.find(a => a.slug === matchedSlug) : null
 
     if (matchedSlug) {

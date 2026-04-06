@@ -155,6 +155,7 @@ export type StreamEvent =
 export async function* streamChat(
   message: string,
   conversationId?: string,
+  activeAppSlug?: string,
 ): AsyncGenerator<StreamEvent> {
   const res = await fetch(`${API_URL}/api/chat`, {
     method: 'POST',
@@ -162,7 +163,7 @@ export async function* streamChat(
       'Content-Type': 'application/json',
       ...getAuthHeader(),
     },
-    body: JSON.stringify({ message, conversationId }),
+    body: JSON.stringify({ message, conversationId, activeAppSlug }),
   })
 
   if (!res.ok) {

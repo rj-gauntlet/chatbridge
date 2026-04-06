@@ -134,7 +134,7 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
     let assistantContent = ''
 
     try {
-      for await (const event of streamChat(text, activeConvId)) {
+      for await (const event of streamChat(text, activeConvId, activePlugin?.appSlug)) {
         if (event.type === 'start') {
           setActiveConvId(event.conversationId)
         } else if (event.type === 'intent_classified') {
@@ -195,7 +195,7 @@ export function ChatWindow({ userEmail, onSignOut }: ChatWindowProps) {
     let assistantContent = ''
 
     try {
-      for await (const event of streamChat(text, activeConvId)) {
+      for await (const event of streamChat(text, activeConvId, activePlugin?.appSlug)) {
         if (event.type === 'start') {
           setActiveConvId(event.conversationId)
         } else if (event.type === 'tool_call') {

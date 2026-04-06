@@ -36,28 +36,28 @@ describe('Flashcard Quiz — Policy Gate', () => {
     conversationId: 'conv-1',
   })
 
-  it('approves start_quiz', () => {
-    const d = approveToolCall(makeCall('start_quiz'), flashcardApp)
+  it('approves start_quiz', async () => {
+    const d = await approveToolCall(makeCall('start_quiz'), flashcardApp)
     expect(d.approved).toBe(true)
   })
 
-  it('approves get_question', () => {
-    const d = approveToolCall(makeCall('get_question'), flashcardApp)
+  it('approves get_question', async () => {
+    const d = await approveToolCall(makeCall('get_question'), flashcardApp)
     expect(d.approved).toBe(true)
   })
 
-  it('approves submit_answer', () => {
-    const d = approveToolCall(makeCall('submit_answer'), flashcardApp)
+  it('approves submit_answer', async () => {
+    const d = await approveToolCall(makeCall('submit_answer'), flashcardApp)
     expect(d.approved).toBe(true)
   })
 
-  it('approves get_results', () => {
-    const d = approveToolCall(makeCall('get_results'), flashcardApp)
+  it('approves get_results', async () => {
+    const d = await approveToolCall(makeCall('get_results'), flashcardApp)
     expect(d.approved).toBe(true)
   })
 
-  it('denies unknown tool', () => {
-    const d = approveToolCall(makeCall('delete_quiz'), flashcardApp)
+  it('denies unknown tool', async () => {
+    const d = await approveToolCall(makeCall('delete_quiz'), flashcardApp)
     expect(d.approved).toBe(false)
     expect(d.reason).toBe('tool_not_found')
   })
@@ -76,9 +76,9 @@ describe('Drawing Canvas — Policy Gate', () => {
     conversationId: 'conv-1',
   })
 
-  it('approves all canvas tools', () => {
+  it('approves all canvas tools', async () => {
     for (const tool of ['open_canvas', 'save_drawing', 'clear_canvas', 'get_drawing_info']) {
-      expect(approveToolCall(makeCall(tool), canvasApp).approved).toBe(true)
+      expect((await approveToolCall(makeCall(tool), canvasApp)).approved).toBe(true)
     }
   })
 })
@@ -96,16 +96,16 @@ describe('Spotify — Policy Gate', () => {
     conversationId: 'conv-1',
   })
 
-  it('approves all spotify tools', () => {
+  it('approves all spotify tools', async () => {
     for (const tool of ['search_tracks', 'create_playlist', 'add_to_playlist', 'get_user_playlists']) {
-      expect(approveToolCall(makeCall(tool), spotifyApp).approved).toBe(true)
+      expect((await approveToolCall(makeCall(tool), spotifyApp)).approved).toBe(true)
     }
   })
 
-  it('denies disabled spotify app', () => {
+  it('denies disabled spotify app', async () => {
     const disabled = { ...spotifyApp, status: 'disabled' as const }
-    expect(approveToolCall(makeCall('search_tracks'), disabled).approved).toBe(false)
-    expect(approveToolCall(makeCall('search_tracks'), disabled).reason).toBe('app_disabled')
+    expect((await approveToolCall(makeCall('search_tracks'), disabled)).approved).toBe(false)
+    expect((await approveToolCall(makeCall('search_tracks'), disabled)).reason).toBe('app_disabled')
   })
 })
 
@@ -186,10 +186,10 @@ describe('Multi-app routing (Policy Gate accepts correct app context)', () => {
     makeApp('spotify', ['search_tracks']),
   ]
 
-  it('each app only approves its own tools', () => {
+  it('each app only approves its own tools', async () => {
     for (const app of allApps) {
       const ownTool = app.tools[0].name
-      expect(approveToolCall({ appId: app.id, toolName: ownTool, parameters: {}, userId: 'u', conversationId: 'c' }, app).approved).toBe(true)
+      expect((await approveToolCall({ appId: app.id, toolName: ownTool, parameters: {}, userId: 'u', conversationId: 'c' }, app)).approved).toBe(true)
 
       // Other apps' tools are not found in this app
       const otherTools = allApps
@@ -197,7 +197,7 @@ describe('Multi-app routing (Policy Gate accepts correct app context)', () => {
         .map(a => a.tools[0].name)
 
       for (const otherTool of otherTools) {
-        const d = approveToolCall({ appId: app.id, toolName: otherTool, parameters: {}, userId: 'u', conversationId: 'c' }, app)
+        const d = await approveToolCall({ appId: app.id, toolName: otherTool, parameters: {}, userId: 'u', conversationId: 'c' }, app)
         // Only deny if the tool name doesn't exist in this app
         if (!app.tools.find(t => t.name === otherTool)) {
           expect(d.approved).toBe(false)

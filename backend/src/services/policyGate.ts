@@ -1,35 +1,19 @@
 import type { AppRegistration } from '../../../shared/types/app'
 import type { PolicyDecision, PolicyDenyReason } from '../../../shared/types/policy'
 import type { ToolCallRequest } from '../../../shared/types/tools'
+import { rateLimiter } from './rateLimiter'
 
-// In-memory rate limiter (per userId + toolName, resets every minute)
-// For MVP — replace with Redis in production
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 const RATE_LIMIT = 30 // max 30 tool calls per user per minute
-
-function isRateLimited(userId: string, toolName: string): boolean {
-  const key = `${userId}:${toolName}`
-  const now = Date.now()
-  const entry = rateLimitMap.get(key)
-
-  if (!entry || entry.resetAt < now) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + 60_000 })
-    return false
-  }
-
-  entry.count++
-  if (entry.count > RATE_LIMIT) return true
-  return false
-}
+const RATE_WINDOW_MS = 60_000
 
 /**
  * Policy Gate — deterministic, non-LLM approval layer.
  * Called before every tool invocation. The LLM suggests; the Gate approves or denies.
  */
-export function approveToolCall(
+export async function approveToolCall(
   call: ToolCallRequest,
   app: AppRegistration | null | undefined,
-): PolicyDecision {
+): Promise<PolicyDecision> {
   // 1. App must exist and be active
   if (!app) {
     return deny('app_unavailable')
@@ -45,7 +29,8 @@ export function approveToolCall(
   }
 
   // 3. Rate limit check
-  if (isRateLimited(call.userId, call.toolName)) {
+  const rateLimitKey = `${call.userId}:${call.toolName}`
+  if (await rateLimiter.isLimited(rateLimitKey, RATE_LIMIT, RATE_WINDOW_MS)) {
     return deny('rate_limited')
   }
 
